@@ -272,9 +272,16 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   if (!artDirection && !isAnalyzing && !imageResult.loading && imageResult.imageUrls.length === 0) {
     return (
       <div className="h-full flex items-center justify-center bg-slate-800/30 rounded-2xl border border-slate-700/50 border-dashed">
-        <div className="text-center p-8 max-w-md">
-          <h3 className="text-lg font-medium text-slate-300 mb-2">Quy Trình Sáng Tạo</h3>
-          <p className="text-slate-500 text-sm">1. Nhập yêu cầu & Tải tài nguyên<br/>2. AI Phân tích & Lập kế hoạch<br/>3. Chỉnh sửa Bố cục<br/>4. Tạo thiết kế</p>
+        <div className="p-8 max-w-md w-full">
+          <h3 className="text-lg font-bold text-slate-300 mb-6 text-center uppercase tracking-wider border-b border-slate-700 pb-3">Quy Trình Sáng Tạo</h3>
+          <ul className="text-slate-400 text-sm space-y-3">
+             <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">1.</span> <span>Chọn Loại sản phẩm - Kích thước</span></li>
+             <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">2.</span> <span>Yêu cầu</span></li>
+             <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">3.</span> <span>Lựa chọn Phong cách - Số lượng - Chất lượng</span></li>
+             <li className="flex items-start"><span className="text-blue-500 font-bold mr-3 min-w-[20px]">4.</span> <span>Lập kế hoạch - Điều chỉnh bố cục</span></li>
+             <li className="flex items-start"><span className="text-emerald-500 font-bold mr-3 min-w-[20px]">5.</span> <span>Tạo file thiết kế - Lưu trữ - Tải về 4k</span></li>
+             <li className="flex items-start"><span className="text-red-500 font-bold mr-3 min-w-[20px]">6.</span> <span>Loại bỏ đối tượng - Tải về 4k</span></li>
+          </ul>
         </div>
       </div>
     );
