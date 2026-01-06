@@ -70,7 +70,9 @@ const GalleryView: React.FC = () => {
       
       setIsProcessingEdit(true);
       try {
-          const result = await removeObjectWithMask(selectedDesign.thumbnail, maskBase64, textDescription);
+          // Use the editResult if available (chained edits), otherwise use original thumbnail
+          const sourceImage = editResult || selectedDesign.thumbnail;
+          const result = await removeObjectWithMask(sourceImage, maskBase64, textDescription);
           if (result) {
               setEditResult(result);
               setIsEditing(false);
@@ -175,7 +177,18 @@ const GalleryView: React.FC = () => {
                       </svg>
                    </button>
                </div>
-               <p className="text-[10px] text-slate-500">{formatDate(design.createdAt)}</p>
+               <div className="flex justify-between items-end mt-2">
+                   <div className="flex flex-col">
+                       <p className="text-[10px] text-slate-500">{formatDate(design.createdAt)}</p>
+                       {/* Display Author Name */}
+                       <p className="text-[10px] text-slate-400 font-medium mt-0.5 flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                             <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          </svg>
+                          {design.author || 'Unknown'}
+                       </p>
+                   </div>
+               </div>
             </div>
           </div>
         ))}
@@ -200,7 +213,13 @@ const GalleryView: React.FC = () => {
                    <div className="p-6 border-b border-slate-700 flex justify-between items-start">
                        <div>
                            <h3 className="text-xl font-bold text-white mb-1">{selectedDesign.requestData.mainHeadline}</h3>
-                           <p className="text-sm text-slate-400">{selectedDesign.requestData.productType} • {selectedDesign.requestData.width}x{selectedDesign.requestData.height}cm</p>
+                           <div className="flex items-center gap-2 text-sm text-slate-400">
+                               <span>{selectedDesign.requestData.productType}</span>
+                               <span>•</span>
+                               <span>{selectedDesign.requestData.width}x{selectedDesign.requestData.height}cm</span>
+                               <span>•</span>
+                               <span className="text-emerald-400">By {selectedDesign.author || 'Unknown'}</span>
+                           </div>
                        </div>
                        <button onClick={handleCloseModal} className="text-slate-500 hover:text-white">
                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -288,7 +307,7 @@ const GalleryView: React.FC = () => {
 
       {isEditing && selectedDesign && (
           <SmartRemover 
-              imageUrl={selectedDesign.thumbnail}
+              imageUrl={editResult || selectedDesign.thumbnail}
               onClose={() => setIsEditing(false)}
               onProcess={handleSmartRemove}
               isProcessing={isProcessingEdit}

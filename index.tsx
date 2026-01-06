@@ -2,6 +2,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { UserProvider } from './contexts/UserContext';
 
 // Cấu hình Monaco Environment trực tiếp trên window mà không cần import thư viện monaco nặng nề
 // Việc trả về null trong getWorker buộc Monaco chạy trên luồng chính (Main Thread),
@@ -20,6 +21,8 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <UserProvider>
+      <App />
+    </UserProvider>
   </React.StrictMode>
 );

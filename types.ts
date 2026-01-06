@@ -1,5 +1,4 @@
 
-
 export enum ProductType {
   POSTER = 'Poster',
   STANDEE = 'Standee',
@@ -146,6 +145,7 @@ export interface SeparatedAssets {
 export interface DesignDNA {
   id?: number; // Auto-incremented by IndexedDB
   createdAt: number; // Timestamp
+  author?: string; // NEW: The user who created this design
   
   // Core Visuals
   thumbnail: string; // Base64 of the generated image (for gallery view)

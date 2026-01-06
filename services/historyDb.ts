@@ -11,11 +11,14 @@ class DesignAppDB extends Dexie {
     super('DesignAppDB');
     
     // Define schema
-    // ++id: Auto-increment primary key
-    // createdAt: Indexed for sorting by date
-    // seed: Indexed for potential searching
+    // V1: '++id, createdAt, seed'
+    // V2: Added 'author'
     (this as any).version(1).stores({
       designs: '++id, createdAt, seed'
+    });
+    
+    (this as any).version(2).stores({
+      designs: '++id, createdAt, seed, author'
     });
   }
 }

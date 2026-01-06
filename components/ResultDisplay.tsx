@@ -5,6 +5,7 @@ import { ArtDirectionRequest, ArtDirectionResponse, ImageGenerationResult, Separ
 import LayoutEditor from './LayoutEditor';
 import SmartRemover from './SmartRemover';
 import { convertLayoutToPrompt, upscaleImageTo4K } from '../services/geminiService';
+import { useUser } from '../contexts/UserContext';
 
 interface AssetCardProps {
   title: string;
@@ -271,10 +272,10 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   if (!artDirection && !isAnalyzing && !imageResult.loading && imageResult.imageUrls.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-800/30 rounded-2xl border border-slate-700/50 border-dashed">
-        <div className="p-8 max-w-md w-full">
+      <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-2xl border border-slate-700/50 border-dashed overflow-y-auto p-4">
+        <div className="max-w-md w-full my-auto">
           <h3 className="text-lg font-bold text-slate-300 mb-6 text-center uppercase tracking-wider border-b border-slate-700 pb-3">Quy Trình Sáng Tạo</h3>
-          <ul className="text-slate-400 text-sm space-y-3">
+          <ul className="text-slate-400 text-sm space-y-3 mb-8">
              <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">1.</span> <span>Chọn Loại sản phẩm - Kích thước</span></li>
              <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">2.</span> <span>Yêu cầu</span></li>
              <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">3.</span> <span>Lựa chọn Phong cách - Số lượng - Chất lượng</span></li>

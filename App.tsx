@@ -1,11 +1,13 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
 import GalleryView from './components/GalleryView';
+import SettingsModal from './components/SettingsModal';
 import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, ImageGenerationResult, ProductType, VisualStyle, QualityLevel, SeparatedAssets, ProductImageMode, DesignPlan, AnalysisModel, DesignDNA } from './types';
 import { generateArtDirection, generateDesignImage, separateDesignComponents, refineDesignImage, regeneratePromptFromPlan, removeObjectWithMask } from './services/geminiService';
 import { saveDesignToHistory } from './services/historyDb';
+import { useUser } from './contexts/UserContext';
 
 // Helper to create a small thumbnail from base64 string
 const createThumbnail = (base64Image: string, maxWidth: number = 300): Promise<string> => {
@@ -31,8 +33,11 @@ const createThumbnail = (base64Image: string, maxWidth: number = 300): Promise<s
 };
 
 const App: React.FC = () => {
+  const { settings, hasCustomKey } = useUser();
+  
   // Navigation State
   const [activeTab, setActiveTab] = useState<'studio' | 'gallery'>('studio');
+  const [showSettings, setShowSettings] = useState(false);
 
   // Form State
   const [request, setRequest] = useState<ArtDirectionRequest>({
@@ -185,7 +190,7 @@ const App: React.FC = () => {
     }
   };
 
-  // NEW: Manual Save Handler
+  // NEW: Manual Save Handler with Author
   const handleSaveDesign = async (selectedImageUrl: string, finalPromptUsed: string) => {
     if (!artDirection) return;
     
@@ -207,6 +212,7 @@ const App: React.FC = () => {
         designPlan: artDirection.designPlan,
         layout: artDirection.layout_suggestion,
         requestData: request,
+        author: settings.displayName, // Save current author
         assets: assetsToSave
       });
       
@@ -330,36 +336,51 @@ const App: React.FC = () => {
              </div>
              <div>
                <h1 className="text-xl font-bold text-white tracking-tight">Thiết kế M.A.P</h1>
-               <p className="text-xs text-slate-400">Powered by Gemini</p>
+               <div className="flex items-center gap-2">
+                 <p className="text-xs text-slate-400">Powered by Gemini</p>
+                 {hasCustomKey && (
+                     <span className="text-[9px] bg-emerald-900/50 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">BYOK Active</span>
+                 )}
+               </div>
              </div>
           </div>
           
-          {/* Navigation Tabs */}
-          <div className="bg-slate-900/50 p-1 rounded-lg border border-slate-700/50 flex gap-1">
-             <button
-               onClick={() => setActiveTab('studio')}
-               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                 activeTab === 'studio' 
-                 ? 'bg-slate-700 text-white shadow' 
-                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
-               }`}
-             >
-               Studio Sáng Tạo
-             </button>
-             <button
-               onClick={() => setActiveTab('gallery')}
-               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                 activeTab === 'gallery' 
-                 ? 'bg-slate-700 text-white shadow' 
-                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
-               }`}
-             >
-               Thư Viện Mẫu
-             </button>
-          </div>
+          <div className="flex items-center gap-4">
+             {/* Navigation Tabs */}
+             <div className="bg-slate-900/50 p-1 rounded-lg border border-slate-700/50 flex gap-1">
+                 <button
+                   onClick={() => setActiveTab('studio')}
+                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                     activeTab === 'studio' 
+                     ? 'bg-slate-700 text-white shadow' 
+                     : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                   }`}
+                 >
+                   Studio Sáng Tạo
+                 </button>
+                 <button
+                   onClick={() => setActiveTab('gallery')}
+                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                     activeTab === 'gallery' 
+                     ? 'bg-slate-700 text-white shadow' 
+                     : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                   }`}
+                 >
+                   Thư Viện Mẫu
+                 </button>
+             </div>
 
-          <div className="flex gap-2">
-            <span className="px-3 py-1 bg-slate-800 rounded-full text-xs font-medium text-slate-400 border border-slate-700">v1.8</span>
+             {/* Login Button */}
+             <button 
+                onClick={() => setShowSettings(true)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg transition-all border border-slate-700 flex items-center gap-2 font-bold text-sm shadow-lg shadow-black/20"
+                title={`Login (Đang dùng: ${settings.displayName})`}
+             >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                </svg>
+                Login
+             </button>
           </div>
         </header>
 
@@ -421,6 +442,9 @@ const App: React.FC = () => {
            </div>
         </div>
       )}
+
+      {/* Settings Modal - Not Strict Anymore */}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} isStrict={false} />}
     </div>
   );
 };
