@@ -1,34 +1,26 @@
 
-import Dexie, { Table } from 'dexie';
+import { Dexie, Table } from 'dexie';
 import { DesignDNA } from '../types';
 
+// Use named import for Dexie to ensure proper type inheritance and instance properties are correctly mapped in TypeScript
 class DesignAppDB extends Dexie {
-  // Declare implicit table properties.
-  // (just to inform Typescript. Instantiated by Dexie in stores() method)
   designs!: Table<DesignDNA, number>; 
 
   constructor() {
     super('DesignAppDB');
-    
-    // Define schema
-    // V1: '++id, createdAt, seed'
-    // V2: Added 'author'
-    (this as any).version(1).stores({
-      designs: '++id, createdAt, seed'
-    });
-    
-    (this as any).version(2).stores({
-      designs: '++id, createdAt, seed, author'
-    });
   }
 }
 
 export const db = new DesignAppDB();
 
+// Define schema outside the constructor on the db instance to resolve the 'Property version does not exist' error
+// and ensure the TypeScript compiler correctly identifies the inherited Dexie methods.
+db.version(2).stores({
+  designs: '++id, createdAt, author, seed'
+});
+
 /**
- * Saves a completed design to history.
- * @param data Partial DesignDNA data (excluding id and createdAt which are handled automatically)
- * @returns The ID of the inserted record
+ * Lưu thiết kế vào lịch sử kèm thông tin tác giả.
  */
 export const saveDesignToHistory = async (data: Omit<DesignDNA, 'id' | 'createdAt'>): Promise<number> => {
   try {
@@ -37,7 +29,7 @@ export const saveDesignToHistory = async (data: Omit<DesignDNA, 'id' | 'createdA
       ...data,
       createdAt: timestamp
     });
-    console.log(`[HistoryDB] Saved design #${id}`);
+    console.log(`[HistoryDB] Saved design #${id} by ${data.author}`);
     return id as number;
   } catch (error) {
     console.error(`[HistoryDB] Failed to save design:`, error);
@@ -46,14 +38,11 @@ export const saveDesignToHistory = async (data: Omit<DesignDNA, 'id' | 'createdA
 };
 
 /**
- * Retrieves all designs, sorted by newest first.
- * Ideally used for the Gallery View.
+ * Lấy tất cả thiết kế.
  */
 export const getAllDesigns = async (): Promise<DesignDNA[]> => {
   try {
-    // toCollection().reverse().sortBy('createdAt') is efficient in Dexie
-    const designs = await db.designs.orderBy('createdAt').reverse().toArray();
-    return designs;
+    return await db.designs.orderBy('createdAt').reverse().toArray();
   } catch (error) {
     console.error(`[HistoryDB] Failed to fetch designs:`, error);
     return [];
@@ -61,39 +50,24 @@ export const getAllDesigns = async (): Promise<DesignDNA[]> => {
 };
 
 /**
- * Retrieves a single design by ID.
- * Used for reloading a past workspace.
+ * Xóa toàn bộ dữ liệu của một tác giả cụ thể.
  */
-export const getDesignDetail = async (id: number): Promise<DesignDNA | undefined> => {
-  try {
-    const design = await db.designs.get(id);
-    return design;
-  } catch (error) {
-    console.error(`[HistoryDB] Failed to get design details for #${id}:`, error);
-    return undefined;
-  }
+export const deleteDesignsByAuthor = async (authorName: string): Promise<number> => {
+    try {
+        const count = await db.designs.where('author').equals(authorName).delete();
+        console.log(`[HistoryDB] Deleted ${count} designs for author ${authorName}`);
+        return count;
+    } catch (error) {
+        console.error(`[HistoryDB] Failed to delete designs for author ${authorName}:`, error);
+        throw error;
+    }
 };
 
-/**
- * Deletes a design from history.
- */
 export const deleteDesign = async (id: number): Promise<void> => {
     try {
         await db.designs.delete(id);
     } catch (error) {
         console.error(`[HistoryDB] Failed to delete design #${id}:`, error);
-        throw error;
-    }
-};
-
-/**
- * Deletes all designs from history.
- */
-export const clearAllDesigns = async (): Promise<void> => {
-    try {
-        await db.designs.clear();
-    } catch (error) {
-        console.error(`[HistoryDB] Failed to clear designs:`, error);
         throw error;
     }
 };

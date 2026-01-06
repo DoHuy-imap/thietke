@@ -3,67 +3,77 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 interface UserSettings {
   displayName: string;
-  apiKey: string;     // Gemini API Key (Main)
-  nanoKey?: string;   // Nano Banana Key (Optional/Secondary for Image Gen)
 }
 
-interface UserContextType {
-  settings: UserSettings;
-  updateSettings: (newSettings: Partial<UserSettings>) => void;
-  hasCustomKey: boolean;
+interface AuthContextType {
+  user: UserSettings | null;
+  login: (name: string) => void;
+  logout: () => void;
+  deleteAccountData: () => Promise<void>;
+  checkApiKeyStatus: () => Promise<boolean>;
+  requestApiKey: () => Promise<void>;
 }
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'map_app_user_settings';
+const STORAGE_KEY = 'map_app_user_v2';
 
-export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [settings, setSettings] = useState<UserSettings>({
-    displayName: 'Designer',
-    apiKey: '',
-    nanoKey: ''
-  });
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<UserSettings | null>(null);
 
-  // Load from LocalStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        setSettings({
-            displayName: parsed.displayName || 'Designer',
-            apiKey: parsed.apiKey || '',
-            nanoKey: parsed.nanoKey || ''
-        });
+        setUser(JSON.parse(saved));
       } catch (e) {
-        console.error("Failed to parse user settings", e);
+        localStorage.removeItem(STORAGE_KEY);
       }
     }
   }, []);
 
-  const updateSettings = (newSettings: Partial<UserSettings>) => {
-    setSettings(prev => {
-      const updated = { ...prev, ...newSettings };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      return updated;
-    });
+  const login = (name: string) => {
+    const newUser = { displayName: name };
+    setUser(newUser);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem(STORAGE_KEY);
+  };
+
+  const deleteAccountData = async () => {
+    if (!user) return;
+    const { deleteDesignsByAuthor } = await import('../services/historyDb');
+    await deleteDesignsByAuthor(user.displayName);
+    logout();
+  };
+
+  const checkApiKeyStatus = async () => {
+    return await (window as any).aistudio.hasSelectedApiKey();
+  };
+
+  const requestApiKey = async () => {
+    await (window as any).aistudio.openSelectKey();
   };
 
   return (
-    <UserContext.Provider value={{ 
-      settings, 
-      updateSettings, 
-      hasCustomKey: !!settings.apiKey && settings.apiKey.length > 10 
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      deleteAccountData,
+      checkApiKeyStatus,
+      requestApiKey
     }}>
       {children}
-    </UserContext.Provider>
+    </AuthContext.Provider>
   );
 };
 
-export const useUser = () => {
-  const context = useContext(UserContext);
-  if (!context) {
-    throw new Error('useUser must be used within a UserProvider');
-  }
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

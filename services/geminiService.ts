@@ -1,29 +1,7 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { ArtDirectionRequest, ArtDirectionResponse, ProductImageMode, VisualStyle, ColorMode, DesignPlan, LayoutSuggestion, AnalysisModel } from "../types";
-
-// --- STRICT BYOK KEY RETRIEVAL ---
-const getAuthKeys = () => {
-  const settingsStr = localStorage.getItem('map_app_user_settings');
-  if (!settingsStr) {
-     throw new Error("Vui lòng nhập API Key trong phần Cài đặt để sử dụng.");
-  }
-  
-  try {
-    const settings = JSON.parse(settingsStr);
-    const mainKey = settings.apiKey;
-    // Nano key is optional, fallback to main key if missing
-    const nanoKey = settings.nanoKey && settings.nanoKey.length > 10 ? settings.nanoKey : mainKey;
-
-    if (!mainKey || mainKey.length < 10) {
-        throw new Error("Vui lòng nhập API Key hợp lệ trong phần Cài đặt.");
-    }
-
-    return { mainKey, nanoKey };
-  } catch (e) {
-      throw new Error("Dữ liệu cài đặt bị lỗi. Vui lòng nhập lại API Key.");
-  }
-};
+// @google/genai guidelines: Use process.env.API_KEY and correct model names.
+import { GoogleGenAI, Type } from "@google/genai";
+import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, DesignPlan, LayoutSuggestion, AnalysisModel } from "../types";
 
 // --- HYBRID MODEL STRATEGY CONFIGURATION ---
 const MODEL_IMAGE_GEN = "gemini-3-pro-image-preview"; 
@@ -56,7 +34,7 @@ Return a JSON object with:
 5.  "recommendedAspectRatio": The best ratio.
 `;
 
-const RESPONSE_SCHEMA: Schema = {
+const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     designPlan: {
@@ -111,9 +89,8 @@ const RESPONSE_SCHEMA: Schema = {
 const getAnalysisModelId = (model: AnalysisModel) => model === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
-  // Reasoning uses Main Key
-  const { mainKey } = getAuthKeys();
-  const ai = new GoogleGenAI({ apiKey: mainKey });
+  // Always use process.env.API_KEY as per instructions
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const modelId = getAnalysisModelId(request.analysisModel);
 
   try {
@@ -209,9 +186,7 @@ export const regeneratePromptFromPlan = async (
     _currentAspectRatio: string,
     currentLayout: LayoutSuggestion | null 
 ): Promise<ArtDirectionResponse> => {
-    // Reasoning uses Main Key
-    const { mainKey } = getAuthKeys();
-    const ai = new GoogleGenAI({ apiKey: mainKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelId = getAnalysisModelId(originalRequest.analysisModel);
 
     try {
@@ -254,10 +229,6 @@ export const generateDesignImage = async (
   logoImage: string | null = null,
   layoutMask?: string | null 
 ): Promise<string[]> => {
-  // Image Generation uses Nano Key (if available)
-  const { nanoKey } = getAuthKeys();
-  const ai = new GoogleGenAI({ apiKey: nanoKey });
-  
   try {
     const fullPrompt = `${prompt}\n\nSTRICT NEGATIVE CONSTRAINTS: ${NEGATIVE_PROMPT}`;
     const parts: any[] = [{ text: fullPrompt }];
@@ -287,8 +258,8 @@ export const generateDesignImage = async (
     }
     
     const promises = Array.from({ length: batchSize }).map(async () => {
-      // Must recreate instance to ensure key is fresh
-      const aiInstance = new GoogleGenAI({ apiKey: nanoKey });
+      // Create new instance before each call as per instructions
+      const aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await aiInstance.models.generateContent({
         model: MODEL_IMAGE_GEN,
         contents: { parts },
@@ -310,9 +281,7 @@ export const generateDesignImage = async (
 };
 
 export const refineDesignImage = async (sourceImageBase64: string, instruction: string, aspectRatio: string, imageSize: string): Promise<string[]> => {
-  // Image Refinement uses Nano Key
-  const { nanoKey } = getAuthKeys();
-  const ai = new GoogleGenAI({ apiKey: nanoKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const prompt = `Edit instruction: ${instruction}. Keep layout consistent. No technical numbers.`;
@@ -338,9 +307,7 @@ export const refineDesignImage = async (sourceImageBase64: string, instruction: 
 };
 
 export const upscaleImageTo4K = async (sourceImageBase64: string, aspectRatio: string): Promise<string> => {
-    // Upscaling uses Nano Key
-    const { nanoKey } = getAuthKeys();
-    const ai = new GoogleGenAI({ apiKey: nanoKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
         const prompt = "UPSCALER: Generate 4K version. Sharpen details, PRESERVE original content and colors exactly. NO NEW ELEMENTS.";
@@ -371,9 +338,7 @@ export const separateDesignComponents = async (
     referenceImageBase64?: string,
     mode: 'full' | 'background' = 'full'
 ): Promise<{ background: string | null, textLayer: string | null, subjects: string[], decor: string[], lighting: string | null }> => {
-  // Separation uses Nano Key (Heavy image lifting)
-  const { nanoKey } = getAuthKeys();
-  const ai = new GoogleGenAI({ apiKey: nanoKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const MAX_QUALITY_SIZE = "4K"; 
 
   const buildParts = (taskPrompt: string) => {
@@ -430,9 +395,7 @@ export const separateDesignComponents = async (
 };
 
 export const removeObjectWithMask = async (originalImageBase64: string, maskImageBase64: string, textInstruction?: string): Promise<string | null> => {
-    // Inpainting uses Nano Key
-    const { nanoKey } = getAuthKeys();
-    const ai = new GoogleGenAI({ apiKey: nanoKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
         const removalContext = textInstruction ? `Specifically remove: "${textInstruction}".` : "Remove the highlighted object.";
@@ -459,13 +422,11 @@ export const removeObjectWithMask = async (originalImageBase64: string, maskImag
 };
 
 export const updatePlanFromLayout = async (currentPlan: DesignPlan, newLayout: LayoutSuggestion): Promise<DesignPlan> => {
-    // Planning uses Main Key
-    const { mainKey } = getAuthKeys();
-    const ai = new GoogleGenAI({ apiKey: mainKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
         const prompt = `Update the design plan keywords based on this new layout positioning. Plan: ${JSON.stringify(currentPlan)}. Layout: ${JSON.stringify(newLayout)}. DO NOT USE NUMBERS.`;
-        const PLAN_SCHEMA: Schema = {
+        const PLAN_SCHEMA = {
             type: Type.OBJECT,
             properties: {
                 subject: { type: Type.STRING },

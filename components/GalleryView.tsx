@@ -1,19 +1,52 @@
 
-import React, { useEffect, useState } from 'react';
-import { getAllDesigns, deleteDesign, clearAllDesigns } from '../services/historyDb';
+import React, { useEffect, useState, useMemo } from 'react';
+import { getAllDesigns, deleteDesign } from '../services/historyDb';
 import { DesignDNA } from '../types';
 import SmartRemover from './SmartRemover';
 import { removeObjectWithMask, upscaleImageTo4K } from '../services/geminiService';
+import { useAuth } from '../contexts/UserContext';
+
+const triggerDownload = (base64Data: string, fileName: string) => {
+  try {
+    const parts = base64Data.split(';base64,');
+    if (parts.length !== 2) return false;
+    const contentType = parts[0].split(':')[1];
+    const raw = window.atob(parts[1]);
+    const rawLength = raw.length;
+    const uInt8Array = new Uint8Array(rawLength);
+    for (let i = 0; i < rawLength; ++i) {
+      uInt8Array[i] = raw.charCodeAt(i);
+    }
+    const blob = new Blob([uInt8Array], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }, 100);
+    return true;
+  } catch (e) { return false; }
+};
 
 const GalleryView: React.FC = () => {
+  const { user } = useAuth();
   const [designs, setDesigns] = useState<DesignDNA[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDesign, setSelectedDesign] = useState<DesignDNA | null>(null);
-  
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editResult, setEditResult] = useState<string | null>(null);
   const [isProcessingEdit, setIsProcessingEdit] = useState(false);
-  const [isUpscalingEdit, setIsUpscalingEdit] = useState(false);
+  const [isUpscaling, setIsUpscaling] = useState(false);
+  
+  // Filter state
+  const [filterMine, setFilterMine] = useState(false);
 
   const fetchDesigns = async () => {
     setLoading(true);
@@ -22,283 +55,146 @@ const GalleryView: React.FC = () => {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchDesigns();
-  }, []);
+  useEffect(() => { fetchDesigns(); }, []);
 
-  const handleDelete = async (e: React.MouseEvent, id?: number) => {
+  const filteredDesigns = useMemo(() => {
+    if (!filterMine || !user) return designs;
+    return designs.filter(d => d.author === user.displayName);
+  }, [designs, filterMine, user]);
+
+  const toggleSelect = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    if (!id) return;
-    if (window.confirm("Bạn có chắc chắn muốn xóa thiết kế này vĩnh viễn?")) {
-      await deleteDesign(id);
-      fetchDesigns(); 
-      if (selectedDesign?.id === id) setSelectedDesign(null);
-    }
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
-  const handleClearAll = async () => {
-    if (designs.length === 0) return;
-    if (window.confirm("CẢNH BÁO: Hành động này sẽ xóa TOÀN BỘ lịch sử thiết kế trong thư viện. Bạn có chắc chắn muốn tiếp tục?")) {
-      await clearAllDesigns();
-      fetchDesigns();
-      setSelectedDesign(null);
-    }
+  const handleDeleteItem = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    await deleteDesign(id);
+    await fetchDesigns();
+    if (selectedDesign?.id === id) setSelectedDesign(null);
   };
 
-  const formatDate = (ts: number) => {
-    return new Date(ts).toLocaleString('vi-VN', {
-      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    for (const id of selectedIds) await deleteDesign(id);
+    setSelectedIds([]);
+    setIsSelectMode(false);
+    await fetchDesigns();
   };
+
+  const formatDate = (ts: number) => new Date(ts).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   
-  const getAspectRatioStyle = (ratioStr: string) => {
-      const [w, h] = ratioStr.split(':');
-      if (w && h) {
-          return { aspectRatio: `${w}/${h}` };
-      }
-      return { aspectRatio: '3/4' }; 
-  };
-
-  const handleCloseModal = () => {
-      setSelectedDesign(null);
-      setEditResult(null);
-      setIsEditing(false);
-  };
-
-  const handleSmartRemove = async (maskBase64: string, textDescription: string) => {
-      if (!selectedDesign) return;
-      
-      setIsProcessingEdit(true);
+  const handleDownload4K = async (url: string, ratio: string) => {
+      setIsUpscaling(true);
       try {
-          // Use the editResult if available (chained edits), otherwise use original thumbnail
-          const sourceImage = editResult || selectedDesign.thumbnail;
-          const result = await removeObjectWithMask(sourceImage, maskBase64, textDescription);
-          if (result) {
-              setEditResult(result);
-              setIsEditing(false);
-          } else {
-              alert("Không thể xóa vật thể. Vui lòng thử lại.");
-          }
-      } catch (error) {
-          console.error("Magic erase failed:", error);
-          alert("Lỗi khi xử lý hình ảnh.");
-      } finally {
-          setIsProcessingEdit(false);
-      }
-  };
-
-  const handleDownloadEdited4K = async () => {
-      if (!editResult || !selectedDesign) return;
-      
-      setIsUpscalingEdit(true);
-      try {
-          const ratio = selectedDesign.recommendedAspectRatio || selectedDesign.layout.canvas_ratio || "1:1";
-          const upscaleUrl = await upscaleImageTo4K(editResult, ratio as any);
-          
-          const link = document.createElement('a');
-          link.href = upscaleUrl;
-          link.download = `edited-design-4k-${Date.now()}.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-      } catch (error) {
-          console.error("Upscale failed:", error);
-          alert("Không thể nâng cấp ảnh lên 4K.");
-      } finally {
-          setIsUpscalingEdit(false);
-      }
+          const upscaleUrl = await upscaleImageTo4K(url, ratio as any);
+          triggerDownload(upscaleUrl, `gallery-4k-${Date.now()}.png`);
+      } catch (e) { alert("Lỗi nâng cấp 4K."); }
+      finally { setIsUpscaling(false); }
   };
 
   return (
-    <div className="h-full overflow-y-auto pr-2 animate-fade-in">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          Thư Viện Thiết Kế
-        </h2>
-        <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-400 font-medium">{designs.length} mẫu đã lưu</span>
-            {designs.length > 0 && (
-                <button 
-                  onClick={handleClearAll}
-                  className="text-xs text-red-400 hover:text-red-300 font-medium px-3 py-1.5 rounded border border-red-500/30 hover:bg-red-900/10 transition-colors"
-                >
-                  Xóa tất cả lịch sử
-                </button>
+    <div className="h-full overflow-y-auto pr-2 animate-fade-in flex flex-col">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 shrink-0 bg-slate-900/50 p-6 rounded-3xl border border-white/5 backdrop-blur-md gap-4">
+        <div>
+           <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase tracking-tighter">Thư Viện Sáng Tạo</h2>
+           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Lưu trữ các thiết kế đã hoàn thiện</p>
+        </div>
+        
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+            <button 
+              onClick={() => setFilterMine(!filterMine)}
+              className={`flex-1 sm:flex-none text-[10px] px-5 py-2.5 rounded-xl font-black uppercase tracking-widest border transition-all ${filterMine ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+            >
+                {filterMine ? 'Đang lọc: Của tôi' : 'Tất cả tác giả'}
+            </button>
+            <button onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }} className={`flex-1 sm:flex-none text-[10px] px-5 py-2.5 rounded-xl font-black uppercase tracking-widest transition-all ${isSelectMode ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {isSelectMode ? 'Hủy' : 'Chọn Nhiều'}
+            </button>
+            {isSelectMode && selectedIds.length > 0 && (
+                <button onClick={handleBulkDelete} className="text-[10px] px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl shadow-lg uppercase tracking-widest animate-scale-up">Xóa ({selectedIds.length})</button>
             )}
         </div>
       </div>
 
-      {loading && (
-        <div className="flex items-center justify-center h-64">
-           <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      {loading ? (
+        <div className="flex items-center justify-center flex-grow"><div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div></div>
+      ) : filteredDesigns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-96 bg-slate-800/20 rounded-[3rem] border border-slate-700/50 border-dashed text-slate-600 uppercase font-black text-xs tracking-widest">Không tìm thấy thiết kế nào.</div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 pb-10">
+          {filteredDesigns.map((design) => (
+            <div key={design.id} onClick={() => !isSelectMode && setSelectedDesign(design)} className={`group relative bg-slate-900 rounded-[2.5rem] overflow-hidden border transition-all duration-500 cursor-pointer shadow-2xl flex flex-col ${isSelectMode && selectedIds.includes(design.id!) ? 'border-purple-500 ring-4 ring-purple-500/20 scale-95' : 'border-slate-800 hover:border-slate-600'}`}>
+              <div className="w-full aspect-square bg-slate-950 relative overflow-hidden">
+                 <img src={design.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt="Thumbnail" />
+                 
+                 {/* Author Badge */}
+                 <div className="absolute top-4 left-4 z-10">
+                    <div className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
+                       <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                       <span className="text-[9px] text-white font-black uppercase tracking-widest">{design.author}</span>
+                    </div>
+                 </div>
+
+                 {isSelectMode && (
+                     <div onClick={(e) => toggleSelect(e, design.id!)} className={`absolute top-4 right-4 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.includes(design.id!) ? 'bg-purple-500 border-purple-500' : 'bg-black/40 border-white'}`}>
+                        {selectedIds.includes(design.id!) && <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>}
+                     </div>
+                 )}
+                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-5">
+                    <p className="text-[11px] text-white font-black uppercase tracking-widest line-clamp-2">{design.requestData.mainHeadline}</p>
+                 </div>
+              </div>
+              <div className="p-5 bg-slate-900 border-t border-slate-800 flex justify-between items-center">
+                 <div>
+                    <span className="text-[9px] text-purple-400 font-black uppercase tracking-widest">{design.requestData.productType}</span>
+                    <p className="text-[9px] text-slate-600 font-bold mt-1 uppercase tracking-tighter">{formatDate(design.createdAt)}</p>
+                 </div>
+                 {!isSelectMode && (
+                     <button onClick={(e) => handleDeleteItem(e, design.id!)} className="p-2.5 bg-red-900/10 hover:bg-red-900/40 text-red-500 rounded-xl transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                 )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
-
-      {!loading && designs.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-96 bg-slate-800/30 rounded-2xl border border-slate-700/50 border-dashed">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-slate-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-          <p className="text-slate-400 text-sm">Chưa có thiết kế nào được lưu.</p>
-          <p className="text-slate-500 text-xs mt-1">Hãy tạo ảnh và lưu lại từ màn hình kết quả.</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {designs.map((design) => (
-          <div 
-            key={design.id} 
-            onClick={() => setSelectedDesign(design)}
-            className="group relative bg-slate-900 rounded-xl overflow-hidden border border-slate-700 hover:border-purple-500 transition-all cursor-pointer shadow-lg hover:shadow-purple-900/20 flex flex-col"
-          >
-            <div 
-                className="w-full overflow-hidden bg-slate-950 relative"
-                style={getAspectRatioStyle(design.recommendedAspectRatio || design.layout.canvas_ratio)}
-            >
-               <img src={design.thumbnail} alt="Design" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                  <span className="text-white text-xs font-bold line-clamp-2">{design.requestData.mainHeadline}</span>
-               </div>
-            </div>
-            
-            <div className="p-3 bg-slate-800 border-t border-slate-700 flex-grow-0">
-               <div className="flex justify-between items-center mb-1">
-                   <span className="text-[10px] text-purple-300 font-medium px-2 py-0.5 bg-purple-900/30 rounded border border-purple-500/20 truncate max-w-[70%]">{design.requestData.productType}</span>
-                   <button 
-                      onClick={(e) => handleDelete(e, design.id)}
-                      className="text-slate-500 hover:text-red-400 p-1 rounded-full hover:bg-slate-700 transition-colors"
-                      title="Xóa"
-                   >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                   </button>
-               </div>
-               <div className="flex justify-between items-end mt-2">
-                   <div className="flex flex-col">
-                       <p className="text-[10px] text-slate-500">{formatDate(design.createdAt)}</p>
-                       {/* Display Author Name */}
-                       <p className="text-[10px] text-slate-400 font-medium mt-0.5 flex items-center gap-1">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                             <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                          </svg>
-                          {design.author || 'Unknown'}
-                       </p>
-                   </div>
-               </div>
-            </div>
-          </div>
-        ))}
-      </div>
 
       {selectedDesign && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" onClick={handleCloseModal}>
-           <div className="bg-slate-900 w-full max-w-5xl h-[85vh] rounded-2xl border border-slate-700 flex overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-               <div className="w-1/2 bg-slate-950 flex items-center justify-center p-8 relative border-r border-slate-800">
-                   <div className="relative w-full h-full flex items-center justify-center">
-                       <img src={editResult || selectedDesign.thumbnail} className="max-w-full max-h-full object-contain shadow-2xl rounded-sm" alt="Full Design" />
-                       
-                       {editResult && (
-                           <div className="absolute top-4 left-4 bg-purple-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg z-10">
-                               KẾT QUẢ ĐÃ CHỈNH SỬA
-                           </div>
-                       )}
-                   </div>
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedDesign(null)}>
+           <div className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-[3rem] border border-white/5 flex overflow-hidden shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+               <div className="w-1/2 bg-black/40 flex items-center justify-center p-12 relative border-r border-white/5">
+                   <img src={editResult || selectedDesign.thumbnail} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" alt="Preview" />
                </div>
-
-               <div className="w-1/2 flex flex-col">
-                   <div className="p-6 border-b border-slate-700 flex justify-between items-start">
+               <div className="w-1/2 flex flex-col p-12 bg-slate-900/50 backdrop-blur-xl">
+                   <div className="flex justify-between items-start mb-10">
                        <div>
-                           <h3 className="text-xl font-bold text-white mb-1">{selectedDesign.requestData.mainHeadline}</h3>
-                           <div className="flex items-center gap-2 text-sm text-slate-400">
-                               <span>{selectedDesign.requestData.productType}</span>
-                               <span>•</span>
-                               <span>{selectedDesign.requestData.width}x{selectedDesign.requestData.height}cm</span>
-                               <span>•</span>
-                               <span className="text-emerald-400">By {selectedDesign.author || 'Unknown'}</span>
+                           <div className="flex items-center gap-3 mb-2">
+                               <span className="px-3 py-1 bg-purple-600 text-white text-[9px] font-black rounded-full uppercase tracking-widest">{selectedDesign.requestData.productType}</span>
+                               <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{formatDate(selectedDesign.createdAt)}</span>
                            </div>
+                           <h3 className="text-3xl font-black text-white uppercase tracking-tighter leading-tight">{selectedDesign.requestData.mainHeadline}</h3>
+                           <p className="text-xs text-slate-400 font-bold uppercase mt-2 tracking-widest">Tác giả: <span className="text-emerald-400">{selectedDesign.author}</span></p>
                        </div>
-                       <button onClick={handleCloseModal} className="text-slate-500 hover:text-white">
-                           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                           </svg>
+                       <button onClick={() => setSelectedDesign(null)} className="p-4 bg-slate-800 hover:bg-slate-700 rounded-2xl text-slate-400 transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                   </div>
+                   <div className="flex-grow space-y-8 overflow-y-auto pr-6 scroll-smooth">
+                       <div className="bg-slate-800/50 p-8 rounded-[2rem] border border-white/5 space-y-4">
+                            <h4 className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Cấu trúc thiết kế (DNA)</h4>
+                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Chủ thể:</span> {selectedDesign.designPlan.subject}</p>
+                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Style:</span> {selectedDesign.designPlan.styleContext}</p>
+                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Màu sắc:</span> {selectedDesign.designPlan.colorLighting}</p>
+                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Bố cục:</span> {selectedDesign.designPlan.composition}</p>
+                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Typography:</span> {selectedDesign.designPlan.typography}</p>
+                       </div>
+                       <div className="grid grid-cols-2 gap-4">
+                            <button onClick={() => setIsEditing(true)} className="py-5 bg-slate-950 border border-red-500/30 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/10 transition-all">🪄 Hậu kỳ xóa AI</button>
+                            <button onClick={() => triggerDownload(editResult || selectedDesign.thumbnail, `design-orig-${Date.now()}.png`)} className="py-5 bg-slate-950 border border-slate-800 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Tải Bản Gốc</button>
+                       </div>
+                   </div>
+                   <div className="mt-10 pt-10 border-t border-white/5">
+                       <button onClick={() => handleDownload4K(editResult || selectedDesign.thumbnail, selectedDesign.recommendedAspectRatio || "1:1")} disabled={isUpscaling} className="w-full py-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-3xl shadow-2xl shadow-emerald-900/40 uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50">
+                           {isUpscaling ? 'Đang Nâng Cấp 4K...' : 'Xuất File In (4K)'}
                        </button>
-                   </div>
-
-                   <div className="flex-grow overflow-y-auto p-6 space-y-6">
-                       <div>
-                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Tài nguyên đã dùng</h4>
-                           <div className="flex flex-wrap gap-2">
-                               {selectedDesign.assets.map((asset, idx) => (
-                                   <div key={idx} className="w-12 h-12 rounded border border-slate-700 bg-slate-800 overflow-hidden" title={asset.type}>
-                                       <img src={asset.data} className="w-full h-full object-cover opacity-70 hover:opacity-100 transition-opacity" alt="asset" />
-                                   </div>
-                               ))}
-                           </div>
-                       </div>
-
-                       <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                           <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Thông tin thiết kế</h4>
-                           <div className="space-y-2">
-                               <div className="grid grid-cols-3 gap-2 text-xs border-b border-slate-700/50 pb-2 mb-2">
-                                   <span className="text-slate-500">Chủ thể:</span>
-                                   <span className="col-span-2 text-slate-300">{selectedDesign.designPlan.subject}</span>
-                               </div>
-                               <div className="grid grid-cols-3 gap-2 text-xs">
-                                   <span className="text-slate-500">Màu sắc:</span>
-                                   <span className="col-span-2 text-slate-300">{selectedDesign.designPlan.colorLighting}</span>
-                               </div>
-                           </div>
-                       </div>
-                       
-                       <div className="space-y-3">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Công cụ chỉnh sửa</h4>
-                            
-                            {!editResult ? (
-                                <button 
-                                    onClick={() => setIsEditing(true)}
-                                    className="w-full py-2.5 bg-slate-800 hover:bg-red-900/20 border border-red-500/50 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 group"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                    Xóa chi tiết (Magic Erase)
-                                </button>
-                            ) : (
-                                <button 
-                                    onClick={() => setEditResult(null)}
-                                    className="w-full py-2.5 bg-slate-800 border border-slate-700 text-slate-400 rounded-lg text-sm font-medium hover:text-white transition-all"
-                                >
-                                    Hủy chỉnh sửa / Quay lại ảnh gốc
-                                </button>
-                            )}
-                       </div>
-                   </div>
-
-                   <div className="p-6 border-t border-slate-700 bg-slate-800/30">
-                       {editResult ? (
-                           <button 
-                             onClick={handleDownloadEdited4K}
-                             disabled={isUpscalingEdit}
-                             className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-lg text-white font-bold shadow-lg shadow-purple-900/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                           >
-                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                               </svg>
-                               {isUpscalingEdit ? 'Đang nâng cấp 4K...' : 'Tải về Kết quả mới (4K)'}
-                           </button>
-                       ) : (
-                           <button className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white font-bold shadow-lg shadow-emerald-900/20 transition-all flex items-center justify-center gap-2">
-                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                               </svg>
-                               Tải file in 4K (Upscale)
-                           </button>
-                       )}
-                       <p className="text-center text-[10px] text-slate-500 mt-2">Ảnh sẽ được AI nâng cấp độ phân giải tối đa trước khi tải về.</p>
                    </div>
                </div>
            </div>
@@ -306,12 +202,13 @@ const GalleryView: React.FC = () => {
       )}
 
       {isEditing && selectedDesign && (
-          <SmartRemover 
-              imageUrl={editResult || selectedDesign.thumbnail}
-              onClose={() => setIsEditing(false)}
-              onProcess={handleSmartRemove}
-              isProcessing={isProcessingEdit}
-          />
+          <SmartRemover imageUrl={editResult || selectedDesign.thumbnail} onClose={() => setIsEditing(false)} isProcessing={isProcessingEdit} onProcess={async (mask, text) => {
+              setIsProcessingEdit(true);
+              try {
+                const res = await removeObjectWithMask(editResult || selectedDesign.thumbnail, mask, text);
+                if (res) { setEditResult(res); setIsEditing(false); }
+              } finally { setIsProcessingEdit(false); }
+          }} />
       )}
     </div>
   );

@@ -1,74 +1,39 @@
 
 import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { ArtDirectionRequest, ArtDirectionResponse, ImageGenerationResult, SeparatedAssets, DesignPlan, LayoutSuggestion, QualityLevel } from '../types';
+import { ArtDirectionRequest, ArtDirectionResponse, ImageGenerationResult, SeparatedAssets, DesignPlan, LayoutSuggestion } from '../types';
 import LayoutEditor from './LayoutEditor';
 import SmartRemover from './SmartRemover';
 import { convertLayoutToPrompt, upscaleImageTo4K } from '../services/geminiService';
-import { useUser } from '../contexts/UserContext';
 
-interface AssetCardProps {
-  title: string;
-  image: string | null;
-  loading: boolean;
-  isWhiteBg?: boolean;
-  onZoom: () => void;
-}
-
-const AssetCard: React.FC<AssetCardProps> = ({ title, image, loading, isWhiteBg, onZoom }) => {
-  if (loading) {
-    return (
-      <div className="bg-slate-900 border border-slate-700/50 rounded-lg p-4 h-48 flex flex-col items-center justify-center animate-pulse">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-        <span className="text-xs text-slate-500 font-medium">{title}</span>
-        <span className="text-[10px] text-slate-600 mt-1">Đang xử lý (4K)...</span>
-      </div>
-    );
+const triggerDownload = (base64Data: string, fileName: string) => {
+  try {
+    const parts = base64Data.split(';base64,');
+    if (parts.length !== 2) return false;
+    const contentType = parts[0].split(':')[1];
+    const raw = window.atob(parts[1]);
+    const rawLength = raw.length;
+    const uInt8Array = new Uint8Array(rawLength);
+    for (let i = 0; i < rawLength; ++i) {
+      uInt8Array[i] = raw.charCodeAt(i);
+    }
+    const blob = new Blob([uInt8Array], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }, 100);
+    return true;
+  } catch (e) {
+    console.error("Download failed", e);
+    return false;
   }
-
-  if (!image) {
-    return (
-      <div className="bg-slate-900/30 border border-slate-800 border-dashed rounded-lg p-4 h-48 flex flex-col items-center justify-center text-slate-600">
-        <span className="text-xs font-medium mb-1">{title}</span>
-        <span className="text-[10px] opacity-50">(Chưa có dữ liệu)</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="group relative bg-slate-900 border border-slate-700 rounded-lg overflow-hidden flex flex-col shadow-lg">
-      <div className={`h-40 w-full relative ${isWhiteBg ? 'bg-white/5' : 'bg-slate-950'} flex items-center justify-center`}>
-        <img src={image} alt={title} className="max-w-full max-h-full object-contain p-2" />
-        
-        {/* Hover Overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
-          <button 
-            onClick={onZoom}
-            className="p-2 bg-slate-800/90 rounded-full text-white hover:bg-blue-600 transition-colors shadow-lg border border-slate-600"
-            title="Xem lớn"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-            </svg>
-          </button>
-          <a 
-            href={image} 
-            download={`${title.replace(/\s+/g, '_')}.png`}
-            className="p-2 bg-slate-800/90 rounded-full text-white hover:bg-emerald-600 transition-colors shadow-lg border border-slate-600"
-            title="Tải về"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-          </a>
-        </div>
-      </div>
-      
-      <div className="p-2.5 border-t border-slate-700 bg-slate-800/80">
-        <p className="text-xs text-center text-slate-300 font-medium truncate" title={title}>{title}</p>
-      </div>
-    </div>
-  );
 };
 
 interface ResultDisplayProps {
@@ -99,7 +64,6 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   isUpdatingPlan,
   onGenerateImages,
   onUpdatePlan,
-  onRegenerateImage, 
   onSeparateLayout,
   onRefineImage,
   onSmartRemove,
@@ -114,10 +78,8 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [refineInstruction, setRefineInstruction] = useState('');
-  const [isRefiningPanelOpen, setIsRefiningPanelOpen] = useState(false);
   const [showSmartRemover, setShowSmartRemover] = useState(false);
   const [isUpscaling, setIsUpscaling] = useState(false);
-  const [isUpscalingRefined, setIsUpscalingRefined] = useState(false);
   const [layoutMask, setLayoutMask] = useState<string | null>(null);
 
   const criteriaList: { key: keyof DesignPlan; label: string }[] = [
@@ -140,21 +102,10 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   useEffect(() => {
     setSelectedImage(null);
-    setIsRefiningPanelOpen(false);
     setRefineInstruction('');
     setShowSmartRemover(false);
     onResetRefinement();
-  }, [imageResult.imageUrls]);
-
-  useEffect(() => {
-    if (selectedImage) {
-        onResetRefinement();
-        setRefineInstruction('');
-        setIsRefiningPanelOpen(false);
-        setShowSmartRemover(false);
-    }
-  }, [selectedImage]);
-
+  }, [imageResult.imageUrls, onResetRefinement]);
 
   const handleRefineSubmit = () => {
     if (selectedImage && refineInstruction) {
@@ -162,126 +113,55 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
     }
   };
 
-  const handlePlanChange = (key: keyof DesignPlan, value: string) => {
-    if (localPlan) {
-        setLocalPlan({ ...localPlan, [key]: value });
-    }
-  };
-  
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
-
-      const layoutMarker = "\n\n-- FORCED COMPOSITION LAYOUT (STRICT) --";
       const layoutInstruction = convertLayoutToPrompt(localLayout);
-      
-      let basePrompt = editablePrompt;
-      if (basePrompt.includes(layoutMarker)) {
-          basePrompt = basePrompt.split(layoutMarker)[0];
-      }
-      setEditablePrompt(basePrompt + layoutInstruction);
+      // Cập nhật prompt cuối cùng từ bố cục đã xác nhận
+      setEditablePrompt(prev => prev.split('\n\n### LAYOUT ###')[0] + layoutInstruction);
   };
   
   const handleGenerateClick = (append: boolean) => {
-      let finalPromptToSend = editablePrompt;
-      const layoutMarker = "-- FORCED COMPOSITION LAYOUT (STRICT) --";
-
-      if (localLayout && !finalPromptToSend.includes(layoutMarker)) {
-          const layoutInstruction = convertLayoutToPrompt(localLayout);
-          finalPromptToSend += layoutInstruction;
-      }
-      onGenerateImages(finalPromptToSend, append, layoutMask);
+      onGenerateImages(editablePrompt, append, layoutMask);
   };
 
-  const handleDownload4K = async () => {
-      if (!selectedImage || !artDirection) return;
+  const handleDownload4K = async (url: string) => {
+      if (!artDirection) return;
       setIsUpscaling(true);
       try {
-          const upscaleUrl = await upscaleImageTo4K(selectedImage, artDirection.recommendedAspectRatio);
-          const link = document.createElement('a');
-          link.href = upscaleUrl;
-          link.download = `design-4k-${Date.now()}.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          const upscaleUrl = await upscaleImageTo4K(url, artDirection.recommendedAspectRatio);
+          triggerDownload(upscaleUrl, `map-design-4k-${Date.now()}.png`);
       } catch (error) {
-          console.error("Upscale failed", error);
-          alert("Không thể nâng cấp ảnh lên 4K. Vui lòng thử lại.");
+          alert("Lỗi server AI Studio (500). Vui lòng thử lại.");
       } finally {
           setIsUpscaling(false);
       }
   };
 
-  const handleDownloadRefined4K = async (url: string) => {
-      if (!artDirection) return;
-      setIsUpscalingRefined(true);
-      try {
-          const upscaleUrl = await upscaleImageTo4K(url, artDirection.recommendedAspectRatio);
-          const link = document.createElement('a');
-          link.href = upscaleUrl;
-          link.download = `refined-4k-${Date.now()}.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-      } catch (error) {
-          console.error("Refined Upscale failed", error);
-          alert("Không thể nâng cấp ảnh lên 4K.");
-      } finally {
-          setIsUpscalingRefined(false);
-      }
-  };
-
   const getReferenceSummary = () => {
       if (request.referenceImages.length === 0) return "Không chọn";
-      return request.referenceImages.map((img, idx) => {
-          if (img.attributes.length === 0) return `Ảnh ${idx + 1} (Không chọn thuộc tính)`;
-          return `Ảnh ${idx + 1}: ${img.attributes.join(', ')}`;
-      }).join(' | ');
+      return request.referenceImages.map((img, idx) => `Ảnh ${idx + 1}: ${img.attributes.join(', ')}`).join(' | ');
   };
-
-  const calculateCost = () => {
-    if (!artDirection) return null;
-    const inputString = JSON.stringify(request) + JSON.stringify(localPlan);
-    const estInputTokens = Math.ceil(inputString.length / 4);
-    const outputString = editablePrompt + (artDirection.analysis || "");
-    const estOutputTokens = Math.ceil(outputString.length / 4);
-    const RATE_INPUT_PER_1K = 50; 
-    const RATE_OUTPUT_PER_1K = 150;
-    let pricePerImage = 2000;
-    if (request.quality === QualityLevel.MEDIUM) pricePerImage = 4000;
-    if (request.quality === QualityLevel.HIGH) pricePerImage = 8000;
-    const costInput = Math.ceil((estInputTokens / 1000) * RATE_INPUT_PER_1K);
-    const costOutput = Math.ceil((estOutputTokens / 1000) * RATE_OUTPUT_PER_1K);
-    const costImages = request.batchSize * pricePerImage;
-    const totalCost = costInput + costOutput + costImages;
-    return {
-        inputTokens: estInputTokens,
-        outputTokens: estOutputTokens,
-        imageCount: request.batchSize,
-        imageQuality: request.quality,
-        costInput,
-        costOutput,
-        costImages,
-        totalCost,
-        pricePerImage,
-        currency: 'VNĐ'
-    };
-  };
-  
-  const costData = calculateCost();
 
   if (!artDirection && !isAnalyzing && !imageResult.loading && imageResult.imageUrls.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-2xl border border-slate-700/50 border-dashed overflow-y-auto p-4">
-        <div className="max-w-md w-full my-auto">
-          <h3 className="text-lg font-bold text-slate-300 mb-6 text-center uppercase tracking-wider border-b border-slate-700 pb-3">Quy Trình Sáng Tạo</h3>
-          <ul className="text-slate-400 text-sm space-y-3 mb-8">
-             <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">1.</span> <span>Chọn Loại sản phẩm - Kích thước</span></li>
-             <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">2.</span> <span>Yêu cầu</span></li>
-             <li className="flex items-start"><span className="text-purple-500 font-bold mr-3 min-w-[20px]">3.</span> <span>Lựa chọn Phong cách - Số lượng - Chất lượng</span></li>
-             <li className="flex items-start"><span className="text-blue-500 font-bold mr-3 min-w-[20px]">4.</span> <span>Lập kế hoạch - Điều chỉnh bố cục</span></li>
-             <li className="flex items-start"><span className="text-emerald-500 font-bold mr-3 min-w-[20px]">5.</span> <span>Tạo file thiết kế - Lưu trữ - Tải về 4k</span></li>
-             <li className="flex items-start"><span className="text-red-500 font-bold mr-3 min-w-[20px]">6.</span> <span>Loại bỏ đối tượng - Tải về 4k</span></li>
+      <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50 border-dashed p-10 overflow-y-auto">
+        <div className="max-w-md w-full my-auto text-center">
+          <h3 className="text-xl font-black text-white mb-8 uppercase tracking-widest border-b border-slate-700 pb-5">Quy Trình Sáng Tạo</h3>
+          <ul className="text-slate-400 text-sm space-y-5 text-left">
+             {[
+               "Chọn Loại sản phẩm - kích thước",
+               "Yêu cầu nội dung & Assets",
+               "Lựa chọn Phong cách & Chất lượng",
+               "Lập kế hoạch - Điều chỉnh bố cục",
+               "Tạo file thiết kế - Lưu trữ",
+               "Hậu kỳ chuyên sâu (Tách nền, xóa AI) & Tải về 4K"
+             ].map((step, idx) => (
+                <li key={idx} className="flex items-start gap-4">
+                  <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-500 flex items-center justify-center font-black text-xs shrink-0">{idx + 1}</span>
+                  <span className="font-bold">{step}</span>
+                </li>
+             ))}
           </ul>
         </div>
       </div>
@@ -290,142 +170,98 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   if (isAnalyzing) {
     return (
-        <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-2xl border border-slate-700/50">
-             <div className="w-16 h-16 border-4 border-blue-500 border-t-purple-500 rounded-full animate-spin mb-6"></div>
-             <h3 className="text-xl font-bold text-white mb-2">Đang Phân Tích...</h3>
+        <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50">
+             <div className="w-16 h-16 border-4 border-blue-500 border-t-purple-500 rounded-full animate-spin mb-8 shadow-2xl"></div>
+             <h3 className="text-xl font-black text-white uppercase tracking-widest">Đang Phân Tích Ý Tưởng...</h3>
         </div>
     );
   }
 
-  const hasSeparation = separatedAssets.background || separatedAssets.textLayer || separatedAssets.subjects.length > 0 || separatedAssets.decor.length > 0 || separatedAssets.lighting || separatedAssets.loading;
-
   return (
-    <div className="flex flex-col h-full gap-6 overflow-y-auto pr-2 relative">
+    <div className="flex flex-col h-full gap-8 overflow-y-auto pr-2 relative">
       {lightboxImage && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setLightboxImage(null)}>
-          <div className="relative max-w-7xl max-h-screen">
-            <img src={lightboxImage} alt="Full view" className="max-h-[90vh] max-w-full rounded-lg shadow-2xl" />
-            <button className="absolute -top-4 -right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2" onClick={() => setLightboxImage(null)}>✕</button>
-          </div>
+        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-xl animate-fade-in" onClick={() => setLightboxImage(null)}>
+            <img src={lightboxImage} alt="Full view" className="max-h-[85vh] max-w-full rounded-2xl shadow-2xl border border-white/5" />
+            <button className="mt-8 px-10 py-4 bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-widest rounded-2xl transition-all">Đóng Xem To</button>
         </div>
       )}
       
       {showSmartRemover && selectedImage && (
-          <SmartRemover 
-             imageUrl={selectedImage}
-             onClose={() => setShowSmartRemover(false)}
-             isProcessing={refinementResult.loading}
-             onProcess={(maskBase64, textDescription) => {
-                 onSmartRemove(selectedImage, maskBase64, textDescription);
-             }}
-          />
+          <SmartRemover imageUrl={selectedImage} onClose={() => setShowSmartRemover(false)} isProcessing={refinementResult.loading} onProcess={(mask, text) => onSmartRemove(selectedImage, mask, text)} />
       )}
 
-      {/* 1. Planning Stage */}
       {artDirection && localPlan && (
-        <div className="bg-slate-800/80 rounded-2xl border border-blue-500/30 overflow-hidden shadow-lg backdrop-blur-sm flex-shrink-0 animate-fade-in-down">
-           <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 px-6 py-3 border-b border-white/10 flex items-center justify-between">
-             <div className="flex items-center gap-2"><span className="text-white text-sm font-bold tracking-wider uppercase">Bảng Kế Hoạch & Bố Cục</span></div>
-             <div className="flex items-center gap-3">
-                 {isUpdatingPlan && <span className="text-xs text-blue-300 animate-pulse">Đang viết lại Prompt...</span>}
-                 <span className="text-slate-400 text-xs bg-slate-900/50 px-2 py-1 rounded">Tỉ lệ đề xuất: {artDirection.recommendedAspectRatio}</span>
-             </div>
+        <div className="bg-slate-800/80 rounded-[2.5rem] border border-blue-500/30 overflow-hidden shadow-2xl backdrop-blur-md flex-shrink-0 animate-fade-in-down">
+           <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 px-8 py-4 border-b border-white/5 flex items-center justify-between">
+             <span className="text-white text-xs font-black tracking-widest uppercase">Bảng Kế Hoạch Sáng Tạo</span>
+             <span className="text-[10px] text-slate-400 bg-slate-950 px-3 py-1.5 rounded-full font-bold">AspectRatio: {artDirection.recommendedAspectRatio}</span>
            </div>
            
-           <div className="p-5 space-y-5">
-             <div className="grid grid-cols-2 gap-4 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 text-xs">
-                 <div><span className="text-slate-500 block">Nội dung phụ:</span><span className="text-slate-200 font-medium">{request.secondaryText || "Không có"}</span></div>
-                 <div><span className="text-slate-500 block">Tham Khảo:</span><span className="text-emerald-400 font-medium block leading-tight">{getReferenceSummary()}</span></div>
+           <div className="p-8 space-y-8">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1 tracking-widest">Tiêu đề chính</p>
+                    <p className="text-xs text-white font-bold">{request.mainHeadline}</p>
+                </div>
+                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1 tracking-widest">Nội dung phụ</p>
+                    <p className="text-xs text-white font-medium">{request.secondaryText || "Không có"}</p>
+                </div>
+                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1 tracking-widest">Tham khảo</p>
+                    <p className="text-[10px] text-emerald-400 font-bold leading-relaxed">{getReferenceSummary()}</p>
+                </div>
              </div>
 
-             <div>
-                <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs font-semibold text-blue-400 uppercase block">1. Phân Tích & Phân Rã (6 Tiêu Chí)</label>
-                    <button onClick={() => localPlan && onUpdatePlan(localPlan)} disabled={isUpdatingPlan} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50">Cập nhật Prompt từ Kế hoạch</button>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {criteriaList.map((item) => (
+                    <div key={item.key} className="bg-slate-900/50 p-5 rounded-3xl border border-slate-700/50 hover:border-blue-500/30 transition-all">
+                        <h4 className="text-[9px] text-blue-400 font-black uppercase mb-2 tracking-widest">{item.label}</h4>
+                        <textarea 
+                          value={localPlan[item.key] || ''} 
+                          onChange={(e) => setLocalPlan(prev => prev ? {...prev, [item.key]: e.target.value} : null)} 
+                          className="w-full bg-transparent text-slate-300 text-[11px] font-bold outline-none resize-none min-h-[70px] leading-relaxed" 
+                        />
+                    </div>
+                ))}
+             </div>
+
+             <div className="flex justify-between items-center bg-slate-900/80 p-4 rounded-2xl border border-blue-500/20">
+                <div>
+                   <h4 className="text-white text-xs font-black uppercase tracking-widest">Đồng bộ hóa kế hoạch</h4>
+                   <p className="text-[10px] text-slate-500 mt-1 font-medium">Sau khi điều chỉnh 6 tiêu chí, nhấn nút bên phải để cập nhật lại trình bố cục</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                   {criteriaList.map((item) => (
-                       <div key={item.key} className="bg-slate-900/80 p-3 rounded border border-slate-700 flex flex-col h-full">
-                           <h4 className="text-[10px] text-blue-300 font-bold uppercase mb-1">{item.label}</h4>
-                           <textarea value={localPlan[item.key] || ''} onChange={(e) => handlePlanChange(item.key, e.target.value)} className="w-full bg-transparent text-slate-300 text-xs outline-none resize-none flex-grow min-h-[60px] border-b border-transparent focus:border-blue-500/50 pb-1" />
-                       </div>
-                   ))}
-                </div>
+                <button 
+                  onClick={() => localPlan && onUpdatePlan(localPlan)} 
+                  disabled={isUpdatingPlan}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-6 py-2.5 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-blue-900/40 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isUpdatingPlan ? "Đang đồng bộ..." : "Cập nhật Trình Bố Cục"}
+                </button>
              </div>
 
              {localLayout && (
-                 <div className="mt-2">
-                     <LayoutEditor 
-                        layout={localLayout}
-                        onLayoutChange={(updated) => setLocalLayout(updated)}
-                        onConfirm={handleLayoutConfirm}
-                        onUpdateDescription={onUpdatePlan}
-                        isUpdatingDescription={isUpdatingPlan}
-                     />
-                 </div>
+                 <LayoutEditor 
+                    layout={localLayout} 
+                    onLayoutChange={(updated) => setLocalLayout(updated)} 
+                    onConfirm={handleLayoutConfirm} 
+                    onUpdateDescription={() => {}} // Đã bỏ logic ở editor
+                    isUpdatingDescription={false} 
+                 />
              )}
 
-             <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase mb-2 block">
-                    2. Prompt Cuối Cùng (Kỹ sư Prompt AI)
-                </label>
-                <div className="rounded-lg border border-slate-700 overflow-hidden monaco-editor-container">
-                    <Editor
-                        height="140px"
-                        defaultLanguage="markdown"
-                        theme="vs-dark"
-                        value={editablePrompt}
-                        onChange={(value) => setEditablePrompt(value || '')}
-                        options={{
-                            minimap: { enabled: false },
-                            fontSize: 12,
-                            lineNumbers: 'off',
-                            scrollBeyondLastLine: false,
-                            wordWrap: 'on',
-                            padding: { top: 12, bottom: 12 },
-                            backgroundColor: '#0f172a',
-                            fontFamily: 'JetBrains Mono, Menlo, Monaco, Courier New, monospace'
-                        }}
-                    />
+             <div className="rounded-3xl border border-slate-700 overflow-hidden shadow-inner bg-slate-950">
+                <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
+                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">AI Synthesis Prompt (Final)</span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] text-emerald-500 font-black uppercase bg-emerald-500/10 px-2 py-1 rounded">Auto-Synced</span>
+                    </div>
                 </div>
+                <Editor height="120px" defaultLanguage="markdown" theme="vs-dark" value={editablePrompt} onChange={(val) => setEditablePrompt(val || '')} options={{ minimap: { enabled: false }, fontSize: 11, padding: { top: 10, bottom: 10 } }} />
              </div>
 
-             {costData && !imageResult.loading && imageResult.imageUrls.length === 0 && (
-                <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
-                    <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700 flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Ước Tính Chi Phí (Token & Resource)</span>
-                        <span className="text-[10px] text-slate-500">Đơn vị: VNĐ</span>
-                    </div>
-                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-xs">
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                            <span className="text-slate-400">Input Token ({costData.inputTokens.toLocaleString()} tokens)</span>
-                            <span className="text-slate-300">{costData.costInput.toLocaleString()} ₫</span>
-                        </div>
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                            <span className="text-slate-400">Output Token ({costData.outputTokens.toLocaleString()} tokens)</span>
-                            <span className="text-slate-300">{costData.costOutput.toLocaleString()} ₫</span>
-                        </div>
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-1 md:col-span-2 mt-1">
-                            <span className="text-purple-400 font-medium">
-                                Tạo Ảnh ({costData.imageCount} ảnh x {costData.pricePerImage.toLocaleString()}₫ - {costData.imageQuality})
-                            </span>
-                            <span className="text-purple-300 font-medium">{costData.costImages.toLocaleString()} ₫</span>
-                        </div>
-                        <div className="md:col-span-2 flex justify-between items-center mt-3 pt-2 border-t border-slate-700">
-                             <span className="text-sm font-bold text-slate-200">Tổng Cộng Tạm Tính:</span>
-                             <span className="text-lg font-bold text-emerald-400 font-mono">
-                                 {costData.totalCost.toLocaleString('vi-VN')} {costData.currency}
-                             </span>
-                        </div>
-                    </div>
-                </div>
-             )}
-
-             {!imageResult.loading && imageResult.imageUrls.length === 0 && (
-                 <button onClick={() => handleGenerateClick(false)} className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white font-bold shadow-lg shadow-emerald-900/20 transition-all transform hover:scale-[1.01] flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+             {imageResult.imageUrls.length === 0 && !imageResult.loading && (
+                 <button onClick={() => handleGenerateClick(false)} className="w-full py-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-[1.5rem] text-white font-black shadow-2xl shadow-emerald-900/30 transition-all active:scale-95 uppercase tracking-widest">
                     Xác Nhận & Tiến Hành Tạo Thiết Kế
                  </button>
              )}
@@ -434,130 +270,129 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
       )}
 
       {imageResult.imageUrls.length > 0 && (
-          <div className="flex-grow flex flex-col gap-4 animate-fade-in-up">
-            <h3 className="text-white font-bold text-lg flex items-center gap-2"><span className="w-2 h-6 bg-purple-500 rounded-sm"></span>Kết Quả Thiết Kế</h3>
-            <div className={`grid gap-4 ${imageResult.imageUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3'}`}>
+          <div className="flex-grow flex flex-col gap-6 animate-fade-in-up">
+            <div className="flex items-center justify-between">
+                <h3 className="text-white font-black text-xl uppercase tracking-tighter flex items-center gap-3">
+                   Kết Quả Studio
+                   <span className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full font-bold">1 hàng 3 mẫu</span>
+                </h3>
+                {imageResult.loading ? (
+                    <span className="text-[10px] text-purple-400 font-black animate-pulse uppercase tracking-widest">Đang tạo thêm...</span>
+                ) : (
+                    <button onClick={() => handleGenerateClick(true)} className="text-[10px] text-slate-500 hover:text-white border border-slate-800 px-6 py-2 rounded-full font-black uppercase tracking-widest transition-all">Tạo thêm mẫu mới</button>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
                 {imageResult.imageUrls.map((url, idx) => (
-                <div key={idx} className={`group relative rounded-xl overflow-hidden border-2 transition-all duration-300 cursor-pointer h-auto aspect-auto bg-slate-900 ${selectedImage === url ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-slate-700 hover:border-slate-500'}`} onClick={(e) => { e.stopPropagation(); setSelectedImage(selectedImage === url ? null : url); }}>
-                    <img src={url} alt={`Option ${idx + 1}`} className="w-full h-full object-contain" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                        <button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="bg-slate-800/80 p-2 rounded-full text-white hover:bg-blue-600 transition-colors">🔍</button>
-                        <span className="text-white font-medium text-sm">Chọn để Sửa/Tách</span>
+                <div 
+                  key={idx} 
+                  className={`group relative rounded-[2rem] overflow-hidden border-2 transition-all cursor-pointer bg-slate-900 flex flex-col ${selectedImage === url ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-slate-800 hover:border-slate-600'}`} 
+                  onClick={() => setSelectedImage(selectedImage === url ? null : url)}
+                >
+                    <div className="w-full aspect-square relative">
+                        <img src={url} alt="Result" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[2px]">
+                            <button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-4 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-xl border border-white/10 shadow-2xl transition-all active:scale-90">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            </button>
+                        </div>
+                        {selectedImage === url && (
+                            <div className="absolute top-4 right-4 bg-emerald-500 text-white p-2 rounded-full shadow-2xl ring-4 ring-white/10 z-10 animate-scale-up">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                        )}
                     </div>
-                    {selectedImage === url && (<div className="absolute top-2 left-2 bg-emerald-500 text-white p-1 rounded-full shadow-lg">✓</div>)}
+                    <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+                        <span className="text-[10px] text-slate-500 font-black uppercase">Mẫu #{idx+1}</span>
+                        <div className="flex items-center gap-2">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedImage === url} 
+                              onChange={() => setSelectedImage(selectedImage === url ? null : url)}
+                              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                            />
+                            <span className="text-[10px] text-slate-400 font-bold uppercase">Lựa chọn</span>
+                        </div>
+                    </div>
                 </div>
                 ))}
-            </div>
-            <div className="flex justify-center mt-2">
-                 {imageResult.loading ? (
-                    <div className="flex items-center gap-2 px-6 py-2 bg-slate-800 rounded-full border border-slate-700 animate-pulse"><span className="text-xs text-purple-400 font-medium">Đang vẽ thêm...</span></div>
-                 ) : (
-                    <button onClick={() => handleGenerateClick(true)} className="bg-slate-800 hover:bg-slate-700 text-white px-8 py-3 rounded-full flex items-center gap-2 transition-all border border-slate-600 hover:border-emerald-500 shadow-lg group"><span className="font-medium">Thêm Ý Tưởng Khác (Tính Phí)</span></button>
-                 )}
             </div>
           </div>
       )}
 
-      {imageResult.loading && imageResult.imageUrls.length === 0 && (
-        <div className="bg-slate-900/50 rounded-2xl border border-slate-700 h-96 flex flex-col items-center justify-center animate-pulse">
-            <div className="inline-block w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-400 text-sm">Đang hiện thực hóa ý tưởng...</p>
-        </div>
-      )}
-
       {selectedImage && !imageResult.loading && (
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 sticky bottom-0 z-10 shadow-2xl animate-fade-in-up">
-           <div className="flex items-center justify-between mb-4">
-             <h3 className="text-white font-semibold flex items-center gap-2">Đã chọn sản phẩm</h3>
-             <div className="flex gap-2">
-                 <button 
-                   onClick={() => onSaveDesign(selectedImage, editablePrompt)}
-                   disabled={isSaving}
-                   className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded flex items-center gap-2 transition-colors disabled:opacity-50"
-                 >
-                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                   </svg>
-                   {isSaving ? 'Đang Lưu...' : 'Lưu vào Thư viện'}
-                 </button>
-                 <button onClick={handleDownload4K} disabled={isUpscaling} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded flex items-center gap-2 transition-colors disabled:opacity-50">
-                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                   </svg>
-                   {isUpscaling ? 'Đang Upscale...' : 'Tải Về (Upscale 4K)'}
+        <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 sticky bottom-0 z-20 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] animate-fade-in-up">
+           <div className="flex items-center justify-between mb-8">
+             <div>
+                <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Công cụ hiệu chỉnh chuyên sâu</h3>
+                <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest mt-1">Đang áp dụng cho mẫu được chọn</p>
+             </div>
+             <div className="flex gap-3">
+                 <button onClick={() => onSaveDesign(selectedImage, editablePrompt)} disabled={isSaving} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl border border-slate-700 transition-all disabled:opacity-50">Lưu Thư Viện</button>
+                 <button onClick={() => handleDownload4K(selectedImage)} disabled={isUpscaling} className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-2xl shadow-emerald-900/40 transition-all active:scale-95 disabled:opacity-50">
+                   {isUpscaling ? 'Đang Kết Xuất 4K...' : 'Tải File In (4K)'}
                  </button>
              </div>
            </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                 <button onClick={() => setShowSmartRemover(true)} className="w-full bg-slate-900 border border-red-500/50 hover:bg-red-900/10 text-white text-sm py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 group">
-                     <span>Xóa Chi Tiết (Magic Eraser)</span>
-                 </button>
-                 <div className={`border rounded-lg p-3 transition-colors ${isRefiningPanelOpen ? 'border-purple-500 bg-purple-900/20' : 'border-slate-600 bg-slate-900'}`}>
-                    <button onClick={() => setIsRefiningPanelOpen(!isRefiningPanelOpen)} className="w-full text-left text-sm font-medium text-white flex items-center justify-between mb-2"><span>Hiệu Chỉnh Bằng Lời (Refine)</span><span className="text-xs text-slate-400">{isRefiningPanelOpen ? '▲' : '▼'}</span></button>
-                    {isRefiningPanelOpen && (
-                      <div className="mt-2 animate-fade-in">
-                         <textarea className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-sm text-white focus:border-purple-500 outline-none resize-none mb-2" placeholder="Nhập yêu cầu sửa đổi..." rows={2} value={refineInstruction} onChange={(e) => setRefineInstruction(e.target.value)} />
-                         <button onClick={handleRefineSubmit} disabled={!refineInstruction || refinementResult.loading} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs py-2 rounded font-medium">{refinementResult.loading ? 'Đang Xử Lý...' : 'Thực Hiện Hiệu Chỉnh'}</button>
-                      </div>
-                    )}
-                 </div>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => onSeparateLayout(selectedImage, 'background')} className="bg-slate-950 border border-blue-500/40 text-blue-400 text-[11px] font-black py-4 rounded-2xl hover:bg-blue-500/10 transition-all uppercase tracking-widest shadow-xl">Tách Nền Chi Tiết</button>
+                <button onClick={() => setShowSmartRemover(true)} className="bg-slate-950 border border-red-500/40 text-red-400 text-[11px] font-black py-4 rounded-2xl hover:bg-red-500/10 transition-all uppercase tracking-widest shadow-xl">Xóa Chi Tiết AI</button>
               </div>
-
-              <div className="flex flex-col gap-2">
-                  <button onClick={() => onSeparateLayout(selectedImage, 'full')} disabled={separatedAssets.loading} className="flex-1 bg-slate-900 border border-slate-600 hover:border-emerald-500 hover:bg-emerald-900/10 rounded-lg p-2 flex items-center justify-center gap-2 transition-all disabled:opacity-50"><span className="text-xs font-medium text-white">Tách Lớp Chi Tiết (Full)</span></button>
-                  <button onClick={() => onSeparateLayout(selectedImage, 'background')} disabled={separatedAssets.loading} className="flex-1 bg-slate-900 border border-slate-600 hover:border-blue-500 hover:bg-blue-900/10 rounded-lg p-2 flex items-center justify-center gap-2 transition-all disabled:opacity-50"><span className="text-xs font-medium text-white">Ảnh Sạch (Bỏ Chữ/Logo)</span></button>
+              <div className="flex gap-3">
+                 <div className="flex-grow bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col">
+                    <textarea className="bg-transparent text-white text-[11px] font-bold outline-none h-14 resize-none placeholder-slate-700" placeholder="Yêu cầu hiệu chỉnh bằng lời (Vd: thêm ánh sáng xanh, thay đổi font chữ...)" value={refineInstruction} onChange={(e) => setRefineInstruction(e.target.value)} />
+                    <button onClick={handleRefineSubmit} disabled={!refineInstruction || refinementResult.loading} className="ml-auto mt-2 bg-purple-600 hover:bg-purple-500 text-white text-[9px] font-black px-5 py-2 rounded-xl transition-all uppercase tracking-widest disabled:opacity-30">Thực Hiện Hiệu Chỉnh</button>
+                 </div>
               </div>
            </div>
            
-           {(refinementResult.loading || refinementResult.imageUrls.length > 0) && (
-               <div className="mt-4 pt-4 border-t border-slate-700 animate-fade-in">
-                  <div className="grid grid-cols-2 gap-4 items-center bg-slate-900/50 p-3 rounded-lg border border-slate-700">
-                      <div className="relative group self-start"><span className="absolute top-2 left-2 bg-slate-800/80 text-xs text-white px-2 py-1 rounded backdrop-blur-sm z-10 border border-slate-600">Ảnh Gốc</span><img src={selectedImage} alt="Original" className="w-full h-48 object-contain rounded-lg border border-slate-600" onClick={() => setLightboxImage(selectedImage)} /></div>
-                      <div className="flex flex-col gap-2">
-                          <div className="relative group w-full">
-                              <span className="absolute top-2 left-2 bg-purple-600/90 text-xs text-white px-2 py-1 rounded backdrop-blur-sm z-10 border border-purple-400 shadow-lg shadow-purple-500/20">Kết Quả Mới</span>
-                              {refinementResult.loading ? (<div className="w-full h-48 bg-slate-800 rounded-lg flex flex-col items-center justify-center border border-slate-700 border-dashed animate-pulse"><span className="text-xs text-slate-500">Đang xử lý...</span></div>) : (<img src={refinementResult.imageUrls[0]} alt="Refined" className="w-full h-48 object-contain rounded-lg border-2 border-purple-500 shadow-lg shadow-purple-500/10 cursor-pointer" onClick={() => setLightboxImage(refinementResult.imageUrls[0])} />)}
-                          </div>
-                          {!refinementResult.loading && refinementResult.imageUrls.length > 0 && (
-                              <div className="grid grid-cols-2 gap-2 mt-1">
-                                  <a href={refinementResult.imageUrls[0]} download={`refined-${Date.now()}.png`} className="bg-slate-700 hover:bg-slate-600 text-white text-[10px] py-2 px-2 rounded text-center transition-colors border border-slate-600 truncate">Tải Gốc</a>
-                                  <button onClick={() => handleDownloadRefined4K(refinementResult.imageUrls[0])} disabled={isUpscalingRefined} className="bg-purple-600 hover:bg-purple-500 text-white text-[10px] py-2 px-2 rounded text-center transition-colors shadow-lg shadow-purple-900/20 flex items-center justify-center gap-1 truncate">{isUpscalingRefined ? '...' : 'Tải 4K'}</button>
-                              </div>
-                          )}
-                      </div>
-                  </div>
+           {(refinementResult.loading || refinementResult.imageUrls.length > 0 || separatedAssets.loading || separatedAssets.background) && (
+               <div className="mt-8 pt-8 border-t border-slate-800">
+                    <h4 className="text-[10px] font-black text-purple-400 uppercase mb-5 tracking-widest">Sản phẩm hậu kỳ:</h4>
+                    <div className="flex gap-6 overflow-x-auto pb-4 scroll-smooth">
+                        {(refinementResult.loading || separatedAssets.loading) ? (
+                            <div className="flex gap-6">
+                                <div className="w-40 h-40 bg-slate-950 animate-pulse rounded-2xl border border-slate-800" />
+                                <div className="w-40 h-40 bg-slate-950 animate-pulse rounded-2xl border border-slate-800" />
+                            </div>
+                        ) : (
+                            <>
+                                {refinementResult.imageUrls.map((url, i) => (
+                                    <div key={i} className="flex flex-col gap-3 min-w-[160px] animate-scale-up">
+                                        <div className="relative group rounded-2xl overflow-hidden border border-purple-500/50 shadow-2xl bg-black">
+                                            <img src={url} className="w-full aspect-square object-contain" alt="Refined" />
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <button onClick={() => setLightboxImage(url)} className="p-3 bg-white/20 rounded-full text-white backdrop-blur-md">🔍</button>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <button onClick={() => triggerDownload(url, `edit-orig-${Date.now()}.png`)} className="w-full py-2 bg-slate-800 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-slate-700">Tải Gốc</button>
+                                            <button onClick={() => handleDownload4K(url)} className="w-full py-2 bg-purple-600 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-purple-500">Tải 4K</button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {separatedAssets.background && (
+                                    <div className="flex flex-col gap-3 min-w-[160px] animate-scale-up">
+                                        <div className="relative group rounded-2xl overflow-hidden border border-blue-500/50 shadow-2xl bg-black">
+                                            <img src={separatedAssets.background} className="w-full aspect-square object-contain" alt="Separated" />
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <button onClick={() => setLightboxImage(separatedAssets.background!)} className="p-3 bg-white/20 rounded-full text-white backdrop-blur-md">🔍</button>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <button onClick={() => triggerDownload(separatedAssets.background!, `bg-orig-${Date.now()}.png`)} className="w-full py-2 bg-slate-800 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-slate-700">Tải Nền Gốc</button>
+                                            <button onClick={() => handleDownload4K(separatedAssets.background!)} className="w-full py-2 bg-blue-600 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-blue-500">Tải Nền 4K</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                </div>
            )}
-        </div>
-      )}
-
-      {hasSeparation && (
-        <div className="mt-4 pt-4 border-t border-slate-700 animate-fade-in-up">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><span className="w-2 h-6 bg-emerald-500 rounded-sm"></span>Kết Quả Tách Lớp & Nguyên Liệu (4K)</h3>
-            <div className="space-y-6">
-                <div>
-                    <h4 className="text-xs text-slate-400 font-bold uppercase mb-2">1. Nền & Ánh Sáng</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                         <AssetCard title="Background" image={separatedAssets.background} loading={separatedAssets.loading} onZoom={() => separatedAssets.background && setLightboxImage(separatedAssets.background)} />
-                         <AssetCard title="Lighting" image={separatedAssets.lighting} loading={separatedAssets.loading} onZoom={() => separatedAssets.lighting && setLightboxImage(separatedAssets.lighting)} />
-                    </div>
-                </div>
-                <div>
-                    <h4 className="text-xs text-slate-400 font-bold uppercase mb-2">2. Chủ Thể</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {separatedAssets.loading && separatedAssets.subjects.length === 0 ? (<><AssetCard title="Main Hero" image={null} loading={true} onZoom={()=>{}} /><AssetCard title="Secondary" image={null} loading={true} onZoom={()=>{}} /></>) : (separatedAssets.subjects.map((img, idx) => (<AssetCard key={`sub-${idx}`} title={idx === 0 ? "Main Subject" : "Secondary"} image={img} loading={false} isWhiteBg onZoom={() => setLightboxImage(img)} />)))}
-                    </div>
-                </div>
-                <div>
-                    <h4 className="text-xs text-slate-400 font-bold uppercase mb-2">3. Typography</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                         <AssetCard title="Text Layer" image={separatedAssets.textLayer} loading={separatedAssets.loading} isWhiteBg onZoom={() => separatedAssets.textLayer && setLightboxImage(separatedAssets.textLayer)} />
-                    </div>
-                </div>
-            </div>
-            {separatedAssets.error && (<div className="mt-4 p-3 bg-red-900/30 border border-red-500/30 rounded-lg text-red-200 text-sm">Lỗi: {separatedAssets.error}</div>)}
         </div>
       )}
     </div>

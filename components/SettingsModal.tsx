@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useUser } from '../contexts/UserContext';
+import { useAuth } from '../contexts/UserContext';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -8,35 +8,23 @@ interface SettingsModalProps {
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, isStrict = false }) => {
-  const { settings, updateSettings } = useUser();
-  const [name, setName] = useState(settings.displayName);
-  const [apiKey, setApiKey] = useState(settings.apiKey);
-  const [nanoKey, setNanoKey] = useState(settings.nanoKey || '');
-  
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [showNanoKey, setShowNanoKey] = useState(false);
+  // Fix: useAuth instead of useUser which is not exported
+  const { user, login } = useAuth();
+  const [name, setName] = useState(user?.displayName || '');
 
   useEffect(() => {
-    setName(settings.displayName);
-    setApiKey(settings.apiKey);
-    setNanoKey(settings.nanoKey || '');
-  }, [settings]);
+    if (user) {
+      setName(user.displayName);
+    }
+  }, [user]);
 
   const handleSave = () => {
-    if (!name.trim() || !apiKey.trim()) {
-        alert("Vui lòng nhập Tên và Gemini API Key!");
+    if (!name.trim()) {
+        alert("Vui lòng nhập Tên!");
         return;
     }
     
-    // Logic: Nếu Nano Key để trống, tự động dùng API Key để người dùng đỡ phải nhập 2 lần
-    // Nếu nhập khác thì dùng cái khác.
-    const finalNanoKey = nanoKey.trim() === '' ? apiKey.trim() : nanoKey.trim();
-
-    updateSettings({
-      displayName: name,
-      apiKey: apiKey.trim(),
-      nanoKey: finalNanoKey
-    });
+    login(name.trim());
     onClose();
   };
 
@@ -69,7 +57,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, isStrict = false
         <div className="p-6 space-y-5">
            {isStrict && (
                <div className="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg text-sm text-blue-200 mb-4">
-                   Để sử dụng, vui lòng nhập API Key của riêng bạn. Dữ liệu được lưu an toàn trên trình duyệt của bạn.
+                   Để sử dụng, vui lòng thiết lập danh tính của bạn.
                </div>
            )}
 
@@ -84,46 +72,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, isStrict = false
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
               />
            </div>
-
-           {/* API Key */}
-           <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-center">
-                 <span>Gemini API Key (Bắt buộc)</span>
-                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:underline">Lấy key ở đâu?</a>
-              </label>
-              <div className="relative">
-                 <input 
-                    type={showApiKey ? "text" : "password"}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Bắt đầu bằng AIza..."
-                    className={`w-full bg-slate-950 border rounded-lg px-4 py-3 text-white focus:ring-2 outline-none pr-10 ${apiKey ? 'border-emerald-500/50 focus:ring-emerald-500' : 'border-red-500/50 focus:ring-red-500'}`}
-                 />
-                 <button onClick={() => setShowApiKey(!showApiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
-                    {showApiKey ? "👁️" : "👁️‍🗨️"}
-                 </button>
-              </div>
-           </div>
-
-           {/* Nano Banana Key */}
-           <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-center">
-                 <span>Nano Banana Key (Tạo ảnh)</span>
-                 <span className="text-[10px] text-slate-500">Nếu trống sẽ dùng Gemini Key</span>
-              </label>
-              <div className="relative">
-                 <input 
-                    type={showNanoKey ? "text" : "password"}
-                    value={nanoKey}
-                    onChange={(e) => setNanoKey(e.target.value)}
-                    placeholder="Key riêng cho Model tạo ảnh (Tùy chọn)..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 outline-none pr-10"
-                 />
-                 <button onClick={() => setShowNanoKey(!showNanoKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
-                    {showNanoKey ? "👁️" : "👁️‍🗨️"}
-                 </button>
-              </div>
-           </div>
         </div>
 
         <div className="p-6 border-t border-slate-700 bg-slate-800/50 flex justify-end gap-3">
@@ -132,7 +80,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, isStrict = false
            )}
            <button 
              onClick={handleSave}
-             disabled={!apiKey || !name}
+             disabled={!name}
              className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
            >
              {isStrict ? "Lưu & Bắt đầu" : "Lưu Cài Đặt"}
