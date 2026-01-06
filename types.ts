@@ -39,8 +39,8 @@ export enum ProductImageMode {
 
 // New Enum for Analysis Model Selection
 export enum AnalysisModel {
-  FLASH = 'Flash', // gemini-3-flash-preview
-  PRO = 'Pro'      // gemini-3-pro-preview
+  FLASH = 'Flash', // Uses gemini-1.5-flash
+  PRO = 'Pro'      // Uses gemini-1.5-pro
 }
 
 export interface ReferenceImageConfig {

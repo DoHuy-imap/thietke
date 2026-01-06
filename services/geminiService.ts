@@ -31,8 +31,9 @@ export const validateApiKey = async (key: string): Promise<boolean> => {
   try {
     const ai = new GoogleGenAI({ apiKey: key });
     // Thử gọi một request siêu nhẹ để kiểm tra key
+    // Dùng gemini-1.5-flash để kiểm tra vì nó ổn định và nhanh
     await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash', 
       contents: { parts: [{ text: 'Hi' }] },
       config: { maxOutputTokens: 1 }
     });
@@ -83,7 +84,10 @@ export const convertLayoutToPrompt = (layout: LayoutSuggestion): string => {
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
   // LAZY INITIALIZATION: Client SDK & Key are loaded here
   const ai = getGeminiClient();
-  const modelId = request.analysisModel === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+  
+  // MAP MODEL THEO CHẾ ĐỘ: Flash -> gemini-1.5-flash, Pro -> gemini-1.5-pro
+  // Các model này hỗ trợ Vision (xử lý ảnh) tốt hơn phiên bản cũ
+  const modelId = request.analysisModel === AnalysisModel.PRO ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
 
   const referenceContext = request.referenceImages.map((ref, idx) => 
     `Reference ${idx + 1} focus: ${ref.attributes.join(', ')}.`
@@ -141,7 +145,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     model: modelId,
     contents: { parts },
     config: {
-      systemInstruction: "You are a Senior Art Director. Create a 6-criteria plan. Split 'Secondary Content' by newline. If TYPOGRAPHY STYLE REFERENCE provided, apply it. Return JSON. Coordinates 0-100.",
+      systemInstruction: "You are a Senior Art Director. Create a 6-criteria plan. Split 'Secondary Content' by newline. If TYPOGRAPHY STYLE REFERENCE provided, apply it. Return JSON. Coordinates 0-100. RECOMMENDED ASPECT RATIO MUST BE ONE OF: '1:1', '3:4', '4:3', '9:16', '16:9'.",
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -150,7 +154,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
           layout_suggestion: { type: Type.OBJECT, properties: { canvas_ratio: {type: Type.STRING}, elements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
           analysis: { type: Type.STRING },
           final_prompt: { type: Type.STRING },
-          recommendedAspectRatio: { type: Type.STRING },
+          recommendedAspectRatio: { type: Type.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
         },
         required: ["designPlan", "layout_suggestion", "analysis", "final_prompt", "recommendedAspectRatio"],
       },
@@ -360,7 +364,10 @@ export const regeneratePromptFromPlan = async (
 ): Promise<ArtDirectionResponse> => {
     // LAZY INITIALIZATION
     const ai = getGeminiClient();
-    const finalModelId = originalRequest.analysisModel === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    
+    // MAP MODEL THEO CHẾ ĐỘ: Flash -> gemini-1.5-flash, Pro -> gemini-1.5-pro
+    // Cập nhật để đảm bảo tính nhất quán khi tái tạo plan
+    const finalModelId = originalRequest.analysisModel === AnalysisModel.PRO ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
     
     const prompt = `Synthesize a high-quality creative prompt based on this updated plan: ${JSON.stringify(updatedPlan)}`;
 
@@ -368,7 +375,7 @@ export const regeneratePromptFromPlan = async (
         model: finalModelId, 
         contents: { parts: [{ text: prompt }] },
         config: {
-            systemInstruction: "Senior Art Director. Output JSON.",
+            systemInstruction: "Senior Art Director. Output JSON. RECOMMENDED ASPECT RATIO MUST BE ONE OF: '1:1', '3:4', '4:3', '9:16', '16:9'.",
             responseMimeType: "application/json",
             responseSchema: {
                 type: Type.OBJECT,
@@ -377,7 +384,7 @@ export const regeneratePromptFromPlan = async (
                     layout_suggestion: { type: Type.OBJECT, properties: { canvas_ratio: {type: Type.STRING}, elements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
                     analysis: { type: Type.STRING },
                     final_prompt: { type: Type.STRING },
-                    recommendedAspectRatio: { type: Type.STRING },
+                    recommendedAspectRatio: { type: Type.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
                 },
                 required: ["designPlan", "layout_suggestion", "analysis", "final_prompt", "recommendedAspectRatio"],
             },
