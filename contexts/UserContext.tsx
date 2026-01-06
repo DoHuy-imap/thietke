@@ -41,21 +41,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    window.location.reload(); // Reload để đảm bảo state sạch
   };
 
   const deleteAccountData = async () => {
     if (!user) return;
     const { deleteDesignsByAuthor } = await import('../services/historyDb');
-    await deleteDesignsByAuthor(user.displayName);
-    logout();
+    try {
+      await deleteDesignsByAuthor(user.displayName);
+      logout();
+    } catch (error) {
+      console.error("Lỗi khi xóa dữ liệu:", error);
+      alert("Không thể xóa dữ liệu lúc này.");
+    }
   };
 
   const checkApiKeyStatus = async () => {
-    return await (window as any).aistudio.hasSelectedApiKey();
+    // Kiểm tra an toàn để tránh lỗi undefined
+    if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
+      return await (window as any).aistudio.hasSelectedApiKey();
+    }
+    return false;
   };
 
   const requestApiKey = async () => {
-    await (window as any).aistudio.openSelectKey();
+    if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
+      await (window as any).aistudio.openSelectKey();
+    } else {
+      console.error("AI Studio API không khả dụng trong môi trường này.");
+    }
   };
 
   return (

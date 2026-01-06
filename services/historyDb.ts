@@ -2,16 +2,14 @@
 import { Dexie, Table } from 'dexie';
 import { DesignDNA } from '../types';
 
-// Use named import for Dexie to ensure proper type inheritance and instance properties are correctly mapped in TypeScript
 class DesignAppDB extends Dexie {
   designs!: Table<DesignDNA, number>; 
 
   constructor() {
-    super('DesignAppDB');
+    super('DesignAppDB_v2'); // Upgrade version to handle new schema
     
-    // Fix: Moving schema definition inside the constructor allows TypeScript to correctly resolve the 'version' method via 'this'.
-    // We cast 'this' to 'Dexie' to ensure the 'version' method is properly recognized by the TypeScript compiler.
-    (this as Dexie).version(2).stores({
+    // Fix: Using type assertion to any to resolve property visibility issues for Dexie's version method
+    (this as any).version(2).stores({
       designs: '++id, createdAt, author, seed'
     });
   }
@@ -50,7 +48,7 @@ export const getAllDesigns = async (): Promise<DesignDNA[]> => {
 };
 
 /**
- * Xóa toàn bộ dữ liệu của một tác giả cụ thể.
+ * Xóa toàn bộ dữ liệu của một tác giả cụ thể (Quyền riêng tư).
  */
 export const deleteDesignsByAuthor = async (authorName: string): Promise<number> => {
     try {

@@ -69,17 +69,21 @@ const GalleryView: React.FC = () => {
 
   const handleDeleteItem = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    await deleteDesign(id);
-    await fetchDesigns();
-    if (selectedDesign?.id === id) setSelectedDesign(null);
+    if(window.confirm('Xác nhận xóa thiết kế này?')) {
+        await deleteDesign(id);
+        await fetchDesigns();
+        if (selectedDesign?.id === id) setSelectedDesign(null);
+    }
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
-    for (const id of selectedIds) await deleteDesign(id);
-    setSelectedIds([]);
-    setIsSelectMode(false);
-    await fetchDesigns();
+    if(window.confirm(`Xóa ${selectedIds.length} thiết kế đã chọn?`)) {
+        for (const id of selectedIds) await deleteDesign(id);
+        setSelectedIds([]);
+        setIsSelectMode(false);
+        await fetchDesigns();
+    }
   };
 
   const formatDate = (ts: number) => new Date(ts).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -88,7 +92,7 @@ const GalleryView: React.FC = () => {
       setIsUpscaling(true);
       try {
           const upscaleUrl = await upscaleImageTo4K(url, ratio as any);
-          triggerDownload(upscaleUrl, `gallery-4k-${Date.now()}.png`);
+          triggerDownload(upscaleUrl, `map-design-4k-${Date.now()}.png`);
       } catch (e) { alert("Lỗi nâng cấp 4K."); }
       finally { setIsUpscaling(false); }
   };
@@ -106,7 +110,7 @@ const GalleryView: React.FC = () => {
               onClick={() => setFilterMine(!filterMine)}
               className={`flex-1 sm:flex-none text-[10px] px-5 py-2.5 rounded-xl font-black uppercase tracking-widest border transition-all ${filterMine ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
             >
-                {filterMine ? 'Đang lọc: Của tôi' : 'Tất cả tác giả'}
+                {filterMine ? 'Đang lọc: Của tôi' : 'Tất cả thiết kế'}
             </button>
             <button onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }} className={`flex-1 sm:flex-none text-[10px] px-5 py-2.5 rounded-xl font-black uppercase tracking-widest transition-all ${isSelectMode ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
                 {isSelectMode ? 'Hủy' : 'Chọn Nhiều'}
@@ -128,11 +132,10 @@ const GalleryView: React.FC = () => {
               <div className="w-full aspect-square bg-slate-950 relative overflow-hidden">
                  <img src={design.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt="Thumbnail" />
                  
-                 {/* Author Badge */}
                  <div className="absolute top-4 left-4 z-10">
                     <div className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
-                       <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                       <span className="text-[9px] text-white font-black uppercase tracking-widest">{design.author}</span>
+                       <div className="w-1.5 h-1.5 rounded-full bg-[#FFD300]"></div>
+                       <span className="text-[9px] text-white font-black uppercase tracking-widest">{design.author || 'M.A.P Designer'}</span>
                     </div>
                  </div>
 
@@ -147,7 +150,7 @@ const GalleryView: React.FC = () => {
               </div>
               <div className="p-5 bg-slate-900 border-t border-slate-800 flex justify-between items-center">
                  <div>
-                    <span className="text-[9px] text-purple-400 font-black uppercase tracking-widest">{design.requestData.productType}</span>
+                    <span className="text-[9px] text-[#FFD300] font-black uppercase tracking-widest">{design.requestData.productType}</span>
                     <p className="text-[9px] text-slate-600 font-bold mt-1 uppercase tracking-tighter">{formatDate(design.createdAt)}</p>
                  </div>
                  {!isSelectMode && (
@@ -160,7 +163,7 @@ const GalleryView: React.FC = () => {
       )}
 
       {selectedDesign && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedDesign(null)}>
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in" onClick={() => { setSelectedDesign(null); setEditResult(null); }}>
            <div className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-[3rem] border border-white/5 flex overflow-hidden shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
                <div className="w-1/2 bg-black/40 flex items-center justify-center p-12 relative border-r border-white/5">
                    <img src={editResult || selectedDesign.thumbnail} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" alt="Preview" />
@@ -169,30 +172,28 @@ const GalleryView: React.FC = () => {
                    <div className="flex justify-between items-start mb-10">
                        <div>
                            <div className="flex items-center gap-3 mb-2">
-                               <span className="px-3 py-1 bg-purple-600 text-white text-[9px] font-black rounded-full uppercase tracking-widest">{selectedDesign.requestData.productType}</span>
+                               <span className="px-3 py-1 bg-[#FFD300] text-black text-[9px] font-black rounded-full uppercase tracking-widest">{selectedDesign.requestData.productType}</span>
                                <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{formatDate(selectedDesign.createdAt)}</span>
                            </div>
                            <h3 className="text-3xl font-black text-white uppercase tracking-tighter leading-tight">{selectedDesign.requestData.mainHeadline}</h3>
-                           <p className="text-xs text-slate-400 font-bold uppercase mt-2 tracking-widest">Tác giả: <span className="text-emerald-400">{selectedDesign.author}</span></p>
+                           <p className="text-xs text-slate-400 font-bold uppercase mt-2 tracking-widest">Tác giả: <span className="text-[#FFD300]">{selectedDesign.author || 'M.A.P Designer'}</span></p>
                        </div>
-                       <button onClick={() => setSelectedDesign(null)} className="p-4 bg-slate-800 hover:bg-slate-700 rounded-2xl text-slate-400 transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                       <button onClick={() => { setSelectedDesign(null); setEditResult(null); }} className="p-4 bg-slate-800 hover:bg-slate-700 rounded-2xl text-slate-400 transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
                    </div>
                    <div className="flex-grow space-y-8 overflow-y-auto pr-6 scroll-smooth">
                        <div className="bg-slate-800/50 p-8 rounded-[2rem] border border-white/5 space-y-4">
-                            <h4 className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Cấu trúc thiết kế (DNA)</h4>
+                            <h4 className="text-[10px] font-black text-[#FFD300] uppercase tracking-widest">Cấu trúc thiết kế (DNA)</h4>
                             <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Chủ thể:</span> {selectedDesign.designPlan.subject}</p>
                             <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Style:</span> {selectedDesign.designPlan.styleContext}</p>
-                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Màu sắc:</span> {selectedDesign.designPlan.colorLighting}</p>
-                            <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Bố cục:</span> {selectedDesign.designPlan.composition}</p>
                             <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Typography:</span> {selectedDesign.designPlan.typography}</p>
                        </div>
                        <div className="grid grid-cols-2 gap-4">
                             <button onClick={() => setIsEditing(true)} className="py-5 bg-slate-950 border border-red-500/30 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/10 transition-all">🪄 Hậu kỳ xóa AI</button>
-                            <button onClick={() => triggerDownload(editResult || selectedDesign.thumbnail, `design-orig-${Date.now()}.png`)} className="py-5 bg-slate-950 border border-slate-800 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Tải Bản Gốc</button>
+                            <button onClick={() => triggerDownload(editResult || selectedDesign.thumbnail, `map-design-${Date.now()}.png`)} className="py-5 bg-slate-950 border border-slate-800 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Tải Bản Gốc</button>
                        </div>
                    </div>
                    <div className="mt-10 pt-10 border-t border-white/5">
-                       <button onClick={() => handleDownload4K(editResult || selectedDesign.thumbnail, selectedDesign.recommendedAspectRatio || "1:1")} disabled={isUpscaling} className="w-full py-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-3xl shadow-2xl shadow-emerald-900/40 uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50">
+                       <button onClick={() => handleDownload4K(editResult || selectedDesign.thumbnail, selectedDesign.recommendedAspectRatio || "1:1")} disabled={isUpscaling} className="w-full py-6 bg-gradient-to-r from-[#FFD300] to-[#FFA000] text-black font-black rounded-3xl shadow-2xl shadow-[#FFD300]/20 uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50">
                            {isUpscaling ? 'Đang Nâng Cấp 4K...' : 'Xuất File In (4K)'}
                        </button>
                    </div>
@@ -207,6 +208,8 @@ const GalleryView: React.FC = () => {
               try {
                 const res = await removeObjectWithMask(editResult || selectedDesign.thumbnail, mask, text);
                 if (res) { setEditResult(res); setIsEditing(false); }
+              } catch(e) {
+                alert("Lỗi khi xử lý hậu kỳ.");
               } finally { setIsProcessingEdit(false); }
           }} />
       )}
