@@ -89,7 +89,7 @@ const RESPONSE_SCHEMA = {
 const getAnalysisModelId = (model: AnalysisModel) => model === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
-  // Always use process.env.API_KEY as per instructions
+  // CRITICAL: Always create new instance right before the call to pick up the updated API KEY
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const modelId = getAnalysisModelId(request.analysisModel);
 
@@ -186,6 +186,7 @@ export const regeneratePromptFromPlan = async (
     _currentAspectRatio: string,
     currentLayout: LayoutSuggestion | null 
 ): Promise<ArtDirectionResponse> => {
+    // CRITICAL: Always create new instance
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelId = getAnalysisModelId(originalRequest.analysisModel);
 
@@ -258,7 +259,7 @@ export const generateDesignImage = async (
     }
     
     const promises = Array.from({ length: batchSize }).map(async () => {
-      // Create new instance before each call as per instructions
+      // CRITICAL: Always create new instance right before making an API call
       const aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await aiInstance.models.generateContent({
         model: MODEL_IMAGE_GEN,
@@ -281,6 +282,7 @@ export const generateDesignImage = async (
 };
 
 export const refineDesignImage = async (sourceImageBase64: string, instruction: string, aspectRatio: string, imageSize: string): Promise<string[]> => {
+  // CRITICAL: Always create new instance
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
@@ -307,6 +309,7 @@ export const refineDesignImage = async (sourceImageBase64: string, instruction: 
 };
 
 export const upscaleImageTo4K = async (sourceImageBase64: string, aspectRatio: string): Promise<string> => {
+    // CRITICAL: Always create new instance
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
@@ -338,6 +341,7 @@ export const separateDesignComponents = async (
     referenceImageBase64?: string,
     mode: 'full' | 'background' = 'full'
 ): Promise<{ background: string | null, textLayer: string | null, subjects: string[], decor: string[], lighting: string | null }> => {
+  // CRITICAL: Always create new instance
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const MAX_QUALITY_SIZE = "4K"; 
 
@@ -395,6 +399,7 @@ export const separateDesignComponents = async (
 };
 
 export const removeObjectWithMask = async (originalImageBase64: string, maskImageBase64: string, textInstruction?: string): Promise<string | null> => {
+    // CRITICAL: Always create new instance
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
@@ -422,6 +427,7 @@ export const removeObjectWithMask = async (originalImageBase64: string, maskImag
 };
 
 export const updatePlanFromLayout = async (currentPlan: DesignPlan, newLayout: LayoutSuggestion): Promise<DesignPlan> => {
+    // CRITICAL: Always create new instance
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {

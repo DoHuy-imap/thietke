@@ -9,6 +9,18 @@ import { generateArtDirection, generateDesignImage, separateDesignComponents, re
 import { saveDesignToHistory } from './services/historyDb';
 import { useAuth } from './contexts/UserContext';
 
+const MapMiniLogo = () => (
+  <div className="w-10 h-10 bg-black border-2 border-[#FFD300] rounded-xl flex items-center justify-center shadow-lg shadow-[#FFD300]/10 overflow-hidden">
+     <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full p-1.5">
+        <path d="M50 15C42 15 35 22 35 30C35 35 38 40 42 42V55H58V42C62 40 65 35 65 30C65 22 58 15 50 15Z" stroke="white" strokeWidth="4"/>
+        <path d="M42 55L35 75L50 85L65 75L58 55H42Z" fill="#FFD300" stroke="white" strokeWidth="4"/>
+        <path d="M42 55L35 75" stroke="#E91E63" strokeWidth="6"/>
+        <path d="M50 55V85" stroke="#FFD300" strokeWidth="6"/>
+        <path d="M58 55L65 75" stroke="#00BCD4" strokeWidth="6"/>
+     </svg>
+  </div>
+);
+
 const createThumbnail = (base64Image: string, maxWidth: number = 300): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -84,7 +96,6 @@ const App: React.FC = () => {
     } finally { setIsAnalyzing(false); }
   };
 
-  // Implement missing event handlers
   const handleUpdatePlan = async (updatedPlan: DesignPlan) => {
     if (!artDirection) return;
     setIsUpdatingPlan(true);
@@ -185,7 +196,7 @@ const App: React.FC = () => {
         designPlan: artDirection.designPlan,
         layout: artDirection.layout_suggestion,
         requestData: { ...request },
-        author: user.displayName, // Tự động điền author từ AuthContext
+        author: user.displayName, 
         assets: assetsToSave,
         recommendedAspectRatio: artDirection.recommendedAspectRatio
       });
@@ -202,30 +213,28 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-purple-500/30">
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-[#FFD300]/30">
       <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px]"></div>
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#FFD300]/5 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-[100px]"></div>
       </div>
 
       <div className="relative z-10 container mx-auto px-4 py-6 h-screen flex flex-col">
         <header className="flex items-center justify-between mb-6 shrink-0 bg-slate-900/40 p-4 rounded-3xl border border-white/5 backdrop-blur-md">
           <div className="flex items-center gap-4">
-             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20">
-               <span className="text-white font-black text-2xl">M</span>
-             </div>
+             <MapMiniLogo />
              <div>
                <h1 className="text-xl font-black text-white tracking-tighter uppercase">Thiết kế M.A.P</h1>
                <div className="flex items-center gap-2">
-                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Powered by Gemini 3.0</p>
+                 <p className="text-[10px] text-[#FFD300] font-bold uppercase tracking-widest opacity-80">Creativity is endless</p>
                </div>
              </div>
           </div>
           
           <div className="flex items-center gap-6">
              <nav className="bg-slate-900/80 p-1.5 rounded-2xl border border-slate-700/50 flex gap-1">
-                 <button onClick={() => setActiveTab('studio')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'studio' ? 'bg-slate-700 text-white shadow-xl' : 'text-slate-500 hover:text-slate-300'}`}>Studio</button>
-                 <button onClick={() => setActiveTab('gallery')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'gallery' ? 'bg-slate-700 text-white shadow-xl' : 'text-slate-500 hover:text-slate-300'}`}>Thư Viện</button>
+                 <button onClick={() => setActiveTab('studio')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'studio' ? 'bg-slate-700 text-[#FFD300] shadow-xl' : 'text-slate-500 hover:text-slate-300'}`}>Studio</button>
+                 <button onClick={() => setActiveTab('gallery')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'gallery' ? 'bg-slate-700 text-[#FFD300] shadow-xl' : 'text-slate-500 hover:text-slate-300'}`}>Thư Viện</button>
              </nav>
 
              <div className="relative">
@@ -233,7 +242,7 @@ const App: React.FC = () => {
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-3 bg-slate-800/80 hover:bg-slate-700 px-4 py-2 rounded-2xl border border-slate-700 transition-all"
                 >
-                   <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center font-black text-sm text-white">
+                   <div className="w-8 h-8 bg-[#FFD300] rounded-full flex items-center justify-center font-black text-sm text-black">
                       {user.displayName.charAt(0).toUpperCase()}
                    </div>
                    <div className="text-left hidden sm:block">

@@ -8,16 +8,16 @@ class DesignAppDB extends Dexie {
 
   constructor() {
     super('DesignAppDB');
+    
+    // Fix: Moving schema definition inside the constructor allows TypeScript to correctly resolve the 'version' method via 'this'.
+    // We cast 'this' to 'Dexie' to ensure the 'version' method is properly recognized by the TypeScript compiler.
+    (this as Dexie).version(2).stores({
+      designs: '++id, createdAt, author, seed'
+    });
   }
 }
 
 export const db = new DesignAppDB();
-
-// Define schema outside the constructor on the db instance to resolve the 'Property version does not exist' error
-// and ensure the TypeScript compiler correctly identifies the inherited Dexie methods.
-db.version(2).stores({
-  designs: '++id, createdAt, author, seed'
-});
 
 /**
  * Lưu thiết kế vào lịch sử kèm thông tin tác giả.
