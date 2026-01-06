@@ -88,6 +88,15 @@ const RESPONSE_SCHEMA = {
 
 const getAnalysisModelId = (model: AnalysisModel) => model === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
+/**
+ * Utility to extract base64 data from a data URL string safely
+ */
+const safeExtractBase64 = (dataUrl: string | null): string | null => {
+  if (!dataUrl) return null;
+  const parts = dataUrl.split(',');
+  return parts.length > 1 ? parts[1] : null;
+};
+
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
   // CRITICAL: Always create new instance right before the call to pick up the updated API KEY
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -131,14 +140,28 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     `;
 
     parts.push({ text: promptText });
-    if (request.logoImage) parts.push({ inlineData: { mimeType: "image/png", data: request.logoImage.split(',')[1] } });
-    request.assetImages.forEach(img => parts.push({ inlineData: { mimeType: "image/png", data: img.split(',')[1] } }));
-    if (request.mainHeadlineImage) parts.push({ inlineData: { mimeType: "image/png", data: request.mainHeadlineImage.split(',')[1] } });
+    
+    // Add images safely
+    const logoData = safeExtractBase64(request.logoImage);
+    if (logoData) parts.push({ inlineData: { mimeType: "image/png", data: logoData } });
+    
+    request.assetImages.forEach(img => {
+      const data = safeExtractBase64(img);
+      if (data) parts.push({ inlineData: { mimeType: "image/png", data } });
+    });
+    
+    const headlineRefData = safeExtractBase64(request.mainHeadlineImage);
+    if (headlineRefData) parts.push({ inlineData: { mimeType: "image/png", data: headlineRefData } });
+    
     request.referenceImages.forEach((refImg, index) => {
-        parts.push({ text: `REF ${index + 1}:`});
-        parts.push({ inlineData: { mimeType: "image/png", data: refImg.image.split(',')[1] } });
+        const data = safeExtractBase64(refImg.image);
+        if (data) {
+          parts.push({ text: `REF ${index + 1}:`});
+          parts.push({ inlineData: { mimeType: "image/png", data } });
+        }
     });
 
+    console.log(`[GeminiService] Calling model ${modelId} for art direction...`);
     const response = await ai.models.generateContent({
       model: modelId,
       contents: { parts },
@@ -150,17 +173,23 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     });
 
     const text = response.text;
-    if (!text) throw new Error("No response from AI Director");
-    const result = JSON.parse(text) as ArtDirectionResponse;
-    if (result.layout_suggestion?.elements) {
-        result.layout_suggestion.elements = result.layout_suggestion.elements.map((el, idx) => ({
-            ...el, id: el.id || `el-${Date.now()}-${idx}`
-        }));
+    if (!text) throw new Error("AI Director returned an empty response. Please try again.");
+    
+    try {
+      const result = JSON.parse(text) as ArtDirectionResponse;
+      if (result.layout_suggestion?.elements) {
+          result.layout_suggestion.elements = result.layout_suggestion.elements.map((el, idx) => ({
+              ...el, id: el.id || `el-${Date.now()}-${idx}`
+          }));
+      }
+      result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
+      return result;
+    } catch (parseError) {
+      console.error("[GeminiService] JSON Parse Error:", text);
+      throw new Error("Không thể xử lý kết quả từ AI (JSON Parse Error). Vui lòng thử lại.");
     }
-    result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
-    return result;
-  } catch (error) {
-    console.error("Error generating art direction:", error);
+  } catch (error: any) {
+    console.error("[GeminiService] Art Direction Error:", error);
     throw error;
   }
 };
@@ -243,18 +272,23 @@ export const generateDesignImage = async (
         - ⛔ DO NOT DRAW THE MASK ITSELF.
         - ⛔ DO NOT DRAW COORDINATES, TEXT LABELS, OR BOXES SEEN IN THE MASK.
         ` });
-        parts.push({ inlineData: { mimeType: "image/png", data: layoutMask.split(',')[1] } });
+        const maskData = safeExtractBase64(layoutMask);
+        if (maskData) parts.push({ inlineData: { mimeType: "image/png", data: maskData } });
     }
 
     if (logoImage) {
-      parts.push({ text: " BRAND LOGO: " });
-      parts.push({ inlineData: { mimeType: "image/png", data: logoImage.split(',')[1] } });
+      const data = safeExtractBase64(logoImage);
+      if (data) {
+        parts.push({ text: " BRAND LOGO: " });
+        parts.push({ inlineData: { mimeType: "image/png", data } });
+      }
     }
 
     if (assetImages.length > 0) {
        parts.push({ text: " PRODUCT ASSETS: " });
        assetImages.forEach(img => {
-          parts.push({ inlineData: { mimeType: "image/png", data: img.split(',')[1] } });
+          const data = safeExtractBase64(img);
+          if (data) parts.push({ inlineData: { mimeType: "image/png", data } });
        });
     }
     
@@ -287,12 +321,15 @@ export const refineDesignImage = async (sourceImageBase64: string, instruction: 
 
   try {
     const prompt = `Edit instruction: ${instruction}. Keep layout consistent. No technical numbers.`;
+    const data = safeExtractBase64(sourceImageBase64);
+    if (!data) throw new Error("Invalid source image");
+
     const response = await ai.models.generateContent({
       model: MODEL_IMAGE_GEN,
       contents: {
         parts: [
           { text: prompt },
-          { inlineData: { mimeType: "image/png", data: sourceImageBase64.split(',')[1] } }
+          { inlineData: { mimeType: "image/png", data } }
         ]
       },
       config: { imageConfig: { aspectRatio, imageSize } },
@@ -314,12 +351,15 @@ export const upscaleImageTo4K = async (sourceImageBase64: string, aspectRatio: s
 
     try {
         const prompt = "UPSCALER: Generate 4K version. Sharpen details, PRESERVE original content and colors exactly. NO NEW ELEMENTS.";
+        const data = safeExtractBase64(sourceImageBase64);
+        if (!data) throw new Error("Invalid source image");
+
         const response = await ai.models.generateContent({
             model: MODEL_IMAGE_GEN,
             contents: {
                 parts: [
                     { text: prompt },
-                    { inlineData: { mimeType: "image/png", data: sourceImageBase64.split(',')[1] } }
+                    { inlineData: { mimeType: "image/png", data } }
                 ]
             },
             config: { imageConfig: { aspectRatio: aspectRatio, imageSize: "4K" } },
@@ -347,7 +387,8 @@ export const separateDesignComponents = async (
 
   const buildParts = (taskPrompt: string) => {
     const parts: any[] = [{ text: taskPrompt }];
-    if (referenceImageBase64) parts.push({ inlineData: { mimeType: "image/png", data: referenceImageBase64.split(',')[1] } });
+    const data = safeExtractBase64(referenceImageBase64 || null);
+    if (data) parts.push({ inlineData: { mimeType: "image/png", data } });
     return parts;
   };
 
@@ -406,13 +447,17 @@ export const removeObjectWithMask = async (originalImageBase64: string, maskImag
         const removalContext = textInstruction ? `Specifically remove: "${textInstruction}".` : "Remove the highlighted object.";
         const prompt = `Inpaint task: ${removalContext} Blend the background perfectly with original texture. NO ARTIFACTS, NO BLUR.`;
         
+        const originalData = safeExtractBase64(originalImageBase64);
+        const maskData = safeExtractBase64(maskImageBase64);
+        if (!originalData || !maskData) throw new Error("Invalid image or mask data");
+
         const response = await ai.models.generateContent({
             model: MODEL_IMAGE_GEN,
             contents: {
                 parts: [
                     { text: prompt },
-                    { inlineData: { mimeType: "image/png", data: originalImageBase64.split(',')[1] } },
-                    { inlineData: { mimeType: "image/png", data: maskImageBase64.split(',')[1] } }
+                    { inlineData: { mimeType: "image/png", data: originalData } },
+                    { inlineData: { mimeType: "image/png", data: maskData } }
                 ]
             }
         });

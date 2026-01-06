@@ -70,6 +70,7 @@ const App: React.FC = () => {
 
   const [artDirection, setArtDirection] = useState<ArtDirectionResponse | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isUpdatingPlan, setIsUpdatingPlan] = useState(false); 
   const [imageResult, setImageResult] = useState<ImageGenerationResult>({ imageUrls: [], loading: false, error: null });
   const [refinementResult, setRefinementResult] = useState<ImageGenerationResult>({ imageUrls: [], loading: false, error: null });
@@ -82,28 +83,40 @@ const App: React.FC = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!request.mainHeadline && !request.layoutRequirements) return;
+    if (!request.mainHeadline) {
+      setAnalysisError("Vui lòng nhập Tiêu đề chính để tiếp tục.");
+      return;
+    }
+    
+    // Reset states
+    setAnalysisError(null);
     setImageResult({ imageUrls: [], loading: false, error: null });
     setRefinementResult({ imageUrls: [], loading: false, error: null });
     setSeparatedAssets({ background: null, textLayer: null, subjects: [], decor: [], lighting: null, loading: false, error: null }); 
     setArtDirection(null);
     setIsAnalyzing(true);
+
     try {
+      console.log("[App] Starting Art Direction Analysis...");
       const direction = await generateArtDirection(request);
       setArtDirection(direction);
     } catch (err: any) {
-      setImageResult(prev => ({ ...prev, error: err.message || "Lỗi khi phân tích yêu cầu." }));
-    } finally { setIsAnalyzing(false); }
+      console.error("[App] Analysis Error:", err);
+      setAnalysisError(err.message || "Lỗi khi kết nối với AI Director. Vui lòng kiểm tra lại API Key hoặc kết nối mạng.");
+    } finally { 
+      setIsAnalyzing(false); 
+    }
   };
 
   const handleUpdatePlan = async (updatedPlan: DesignPlan) => {
     if (!artDirection) return;
     setIsUpdatingPlan(true);
+    setAnalysisError(null);
     try {
       const result = await regeneratePromptFromPlan(updatedPlan, request, artDirection.recommendedAspectRatio, artDirection.layout_suggestion);
       setArtDirection(result);
     } catch (err: any) {
-      alert("Lỗi khi cập nhật kế hoạch: " + (err as Error).message);
+      setAnalysisError("Lỗi khi cập nhật kế hoạch: " + (err as Error).message);
     } finally {
       setIsUpdatingPlan(false);
     }
@@ -298,9 +311,23 @@ const App: React.FC = () => {
                   </div>
                   <div className="lg:col-span-8 h-full min-h-[500px]">
                     <ResultDisplay 
-                      request={request} artDirection={artDirection} imageResult={imageResult} refinementResult={refinementResult} isAnalyzing={isAnalyzing} isUpdatingPlan={isUpdatingPlan}
-                      onGenerateImages={handleGenerateFinalImages} onUpdatePlan={handleUpdatePlan} onRegenerateImage={() => {}} onSeparateLayout={handleSeparateLayout}
-                      onRefineImage={handleRefineImage} onSmartRemove={handleSmartRemove} onResetRefinement={() => {}} separatedAssets={separatedAssets} onSaveDesign={handleSaveDesign} isSaving={isSaving}
+                      request={request} 
+                      artDirection={artDirection} 
+                      imageResult={imageResult} 
+                      refinementResult={refinementResult} 
+                      isAnalyzing={isAnalyzing} 
+                      analysisError={analysisError}
+                      isUpdatingPlan={isUpdatingPlan}
+                      onGenerateImages={handleGenerateFinalImages} 
+                      onUpdatePlan={handleUpdatePlan} 
+                      onRegenerateImage={() => {}} 
+                      onSeparateLayout={handleSeparateLayout}
+                      onRefineImage={handleRefineImage} 
+                      onSmartRemove={handleSmartRemove} 
+                      onResetRefinement={() => {}} 
+                      separatedAssets={separatedAssets} 
+                      onSaveDesign={handleSaveDesign} 
+                      isSaving={isSaving}
                     />
                   </div>
               </div>

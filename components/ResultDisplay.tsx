@@ -42,6 +42,7 @@ interface ResultDisplayProps {
   imageResult: ImageGenerationResult;
   refinementResult: ImageGenerationResult;
   isAnalyzing: boolean;
+  analysisError: string | null;
   isUpdatingPlan: boolean;
   onGenerateImages: (finalPrompt: string, append?: boolean, layoutMask?: string | null) => void;
   onUpdatePlan: (updatedPlan: DesignPlan) => void;
@@ -61,6 +62,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   imageResult, 
   refinementResult,
   isAnalyzing,
+  analysisError,
   isUpdatingPlan,
   onGenerateImages,
   onUpdatePlan,
@@ -143,7 +145,38 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
       return request.referenceImages.map((img, idx) => `Ảnh ${idx + 1}: ${img.attributes.join(', ')}`).join(' | ');
   };
 
-  if (!artDirection && !isAnalyzing && !imageResult.loading && imageResult.imageUrls.length === 0) {
+  // Render Error State
+  if (analysisError) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-red-950/20 rounded-3xl border border-red-500/30 p-10 animate-fade-in">
+        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-xl font-black text-white uppercase tracking-widest mb-4">Lỗi Phân Tích</h3>
+        <p className="text-red-400 text-center text-sm font-bold max-w-md leading-relaxed">
+          {analysisError}
+        </p>
+        <p className="text-slate-500 text-[10px] uppercase tracking-widest mt-8 font-black">Vui lòng thử lại hoặc kiểm tra lại thông tin đầu vào</p>
+      </div>
+    );
+  }
+
+  if (isAnalyzing) {
+    return (
+        <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50">
+             <div className="relative">
+                <div className="w-20 h-20 border-4 border-blue-500/20 rounded-full shadow-[0_0_50px_rgba(59,130,246,0.2)]"></div>
+                <div className="absolute inset-0 w-20 h-20 border-4 border-blue-500 border-t-purple-500 rounded-full animate-spin"></div>
+             </div>
+             <h3 className="text-xl font-black text-white uppercase tracking-widest mt-10">Đang Phân Tích Ý Tưởng...</h3>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-3 animate-pulse">AI Director đang lập kế hoạch thiết kế</p>
+        </div>
+    );
+  }
+
+  if (!artDirection && !imageResult.loading && imageResult.imageUrls.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50 border-dashed p-10 overflow-y-auto">
         <div className="max-w-md w-full my-auto text-center">
@@ -165,15 +198,6 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
           </ul>
         </div>
       </div>
-    );
-  }
-
-  if (isAnalyzing) {
-    return (
-        <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50">
-             <div className="w-16 h-16 border-4 border-blue-500 border-t-purple-500 rounded-full animate-spin mb-8 shadow-2xl"></div>
-             <h3 className="text-xl font-black text-white uppercase tracking-widest">Đang Phân Tích Ý Tưởng...</h3>
-        </div>
     );
   }
 
