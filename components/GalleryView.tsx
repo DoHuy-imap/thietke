@@ -50,9 +50,14 @@ const GalleryView: React.FC = () => {
 
   const fetchDesigns = async () => {
     setLoading(true);
-    const data = await getAllDesigns();
-    setDesigns(data);
-    setLoading(false);
+    try {
+      const data = await getAllDesigns();
+      setDesigns(data);
+    } catch (e) {
+      console.error("Fetch designs error", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchDesigns(); }, []);
@@ -67,22 +72,30 @@ const GalleryView: React.FC = () => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
-  const handleDeleteItem = async (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    if(window.confirm('Xác nhận xóa thiết kế này?')) {
-        await deleteDesign(id);
-        await fetchDesigns();
-        if (selectedDesign?.id === id) setSelectedDesign(null);
+  const handleDeleteItem = async (e: React.MouseEvent | React.TouchEventHandler, id: number) => {
+    if (e && 'stopPropagation' in e) e.stopPropagation();
+    if(window.confirm('Xác nhận xóa thiết kế này vĩnh viễn?')) {
+        try {
+          await deleteDesign(id);
+          await fetchDesigns();
+          if (selectedDesign?.id === id) setSelectedDesign(null);
+        } catch (err) {
+          alert("Không thể xóa thiết kế.");
+        }
     }
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     if(window.confirm(`Xóa ${selectedIds.length} thiết kế đã chọn?`)) {
-        for (const id of selectedIds) await deleteDesign(id);
-        setSelectedIds([]);
-        setIsSelectMode(false);
-        await fetchDesigns();
+        try {
+          for (const id of selectedIds) await deleteDesign(id);
+          setSelectedIds([]);
+          setIsSelectMode(false);
+          await fetchDesigns();
+        } catch (err) {
+          alert("Lỗi khi xóa hàng loạt.");
+        }
     }
   };
 
@@ -154,7 +167,7 @@ const GalleryView: React.FC = () => {
                     <p className="text-[9px] text-slate-600 font-bold mt-1 uppercase tracking-tighter">{formatDate(design.createdAt)}</p>
                  </div>
                  {!isSelectMode && (
-                     <button onClick={(e) => handleDeleteItem(e, design.id!)} className="p-2.5 bg-red-900/10 hover:bg-red-900/40 text-red-500 rounded-xl transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                     <button onClick={(e) => handleDeleteItem(e, design.id!)} className="p-2.5 bg-red-900/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-all group-hover:scale-110 active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                  )}
               </div>
             </div>
@@ -164,36 +177,44 @@ const GalleryView: React.FC = () => {
 
       {selectedDesign && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in" onClick={() => { setSelectedDesign(null); setEditResult(null); }}>
-           <div className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-[3rem] border border-white/5 flex overflow-hidden shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
-               <div className="w-1/2 bg-black/40 flex items-center justify-center p-12 relative border-r border-white/5">
+           <div className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-[3rem] border border-white/5 flex flex-col md:flex-row overflow-hidden shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+               <div className="w-full md:w-1/2 bg-black/40 flex items-center justify-center p-8 md:p-12 relative border-r border-white/5">
                    <img src={editResult || selectedDesign.thumbnail} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" alt="Preview" />
                </div>
-               <div className="w-1/2 flex flex-col p-12 bg-slate-900/50 backdrop-blur-xl">
-                   <div className="flex justify-between items-start mb-10">
+               <div className="w-full md:w-1/2 flex flex-col p-8 md:p-12 bg-slate-900/50 backdrop-blur-xl">
+                   <div className="flex justify-between items-start mb-8 md:mb-10">
                        <div>
                            <div className="flex items-center gap-3 mb-2">
                                <span className="px-3 py-1 bg-[#FFD300] text-black text-[9px] font-black rounded-full uppercase tracking-widest">{selectedDesign.requestData.productType}</span>
                                <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{formatDate(selectedDesign.createdAt)}</span>
                            </div>
-                           <h3 className="text-3xl font-black text-white uppercase tracking-tighter leading-tight">{selectedDesign.requestData.mainHeadline}</h3>
+                           <h3 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter leading-tight">{selectedDesign.requestData.mainHeadline}</h3>
                            <p className="text-xs text-slate-400 font-bold uppercase mt-2 tracking-widest">Tác giả: <span className="text-[#FFD300]">{selectedDesign.author || 'M.A.P Designer'}</span></p>
                        </div>
                        <button onClick={() => { setSelectedDesign(null); setEditResult(null); }} className="p-4 bg-slate-800 hover:bg-slate-700 rounded-2xl text-slate-400 transition-all active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
                    </div>
-                   <div className="flex-grow space-y-8 overflow-y-auto pr-6 scroll-smooth">
-                       <div className="bg-slate-800/50 p-8 rounded-[2rem] border border-white/5 space-y-4">
+                   <div className="flex-grow space-y-6 md:space-y-8 overflow-y-auto pr-2 md:pr-6 scroll-smooth scrollbar-hide">
+                       <div className="bg-slate-800/50 p-6 md:p-8 rounded-[2rem] border border-white/5 space-y-4">
                             <h4 className="text-[10px] font-black text-[#FFD300] uppercase tracking-widest">Cấu trúc thiết kế (DNA)</h4>
                             <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Chủ thể:</span> {selectedDesign.designPlan.subject}</p>
                             <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Style:</span> {selectedDesign.designPlan.styleContext}</p>
                             <p className="text-xs text-slate-300 leading-relaxed font-bold"><span className="text-white uppercase mr-2 opacity-50">Typography:</span> {selectedDesign.designPlan.typography}</p>
                        </div>
                        <div className="grid grid-cols-2 gap-4">
-                            <button onClick={() => setIsEditing(true)} className="py-5 bg-slate-950 border border-red-500/30 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/10 transition-all">🪄 Hậu kỳ xóa AI</button>
-                            <button onClick={() => triggerDownload(editResult || selectedDesign.thumbnail, `map-design-${Date.now()}.png`)} className="py-5 bg-slate-950 border border-slate-800 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Tải Bản Gốc</button>
+                            <button onClick={() => setIsEditing(true)} className="py-4 md:py-5 bg-slate-950 border border-red-500/30 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/10 transition-all">🪄 Hậu kỳ xóa AI</button>
+                            <button onClick={() => triggerDownload(editResult || selectedDesign.thumbnail, `map-design-${Date.now()}.png`)} className="py-4 md:py-5 bg-slate-950 border border-slate-800 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Tải Bản Gốc</button>
+                       </div>
+                       <div className="pt-4">
+                            <button 
+                                onClick={(e) => handleDeleteItem(e, selectedDesign.id!)} 
+                                className="w-full py-4 bg-red-950/20 border border-red-500/20 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
+                            >
+                                Xóa thiết kế này
+                            </button>
                        </div>
                    </div>
-                   <div className="mt-10 pt-10 border-t border-white/5">
-                       <button onClick={() => handleDownload4K(editResult || selectedDesign.thumbnail, selectedDesign.recommendedAspectRatio || "1:1")} disabled={isUpscaling} className="w-full py-6 bg-gradient-to-r from-[#FFD300] to-[#FFA000] text-black font-black rounded-3xl shadow-2xl shadow-[#FFD300]/20 uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50">
+                   <div className="mt-8 md:mt-10 pt-8 md:pt-10 border-t border-white/5">
+                       <button onClick={() => handleDownload4K(editResult || selectedDesign.thumbnail, selectedDesign.recommendedAspectRatio || "1:1")} disabled={isUpscaling} className="w-full py-5 md:py-6 bg-gradient-to-r from-[#FFD300] to-[#FFA000] text-black font-black rounded-3xl shadow-2xl shadow-[#FFD300]/20 uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 border-t-2 border-white/30">
                            {isUpscaling ? 'Đang Nâng Cấp 4K...' : 'Xuất File In (4K)'}
                        </button>
                    </div>

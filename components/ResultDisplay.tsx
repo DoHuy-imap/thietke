@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import Editor from '@monaco-editor/react';
 import { ArtDirectionRequest, ArtDirectionResponse, ImageGenerationResult, SeparatedAssets, DesignPlan, LayoutSuggestion } from '../types';
 import LayoutEditor from './LayoutEditor';
 import SmartRemover from './SmartRemover';
@@ -79,18 +78,17 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const [localLayout, setLocalLayout] = useState<LayoutSuggestion | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
-  const [refineInstruction, setRefineInstruction] = useState('');
   const [showSmartRemover, setShowSmartRemover] = useState(false);
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [layoutMask, setLayoutMask] = useState<string | null>(null);
 
   const criteriaList: { key: keyof DesignPlan; label: string }[] = [
-      { key: 'subject', label: 'Chủ thể & Nội dung phụ' },
-      { key: 'styleContext', label: 'Bối cảnh & Phong cách' },
-      { key: 'composition', label: 'Bố cục & Góc máy' },
+      { key: 'subject', label: 'Chủ thể & Nội dung' },
+      { key: 'styleContext', label: 'Phong cách & Bối cảnh' },
+      { key: 'composition', label: 'Bố cục & Góc nhìn' },
       { key: 'colorLighting', label: 'Màu sắc & Ánh sáng' },
       { key: 'decorElements', label: 'Chi tiết trang trí' },
-      { key: 'typography', label: 'Typography (Chữ)' },
+      { key: 'typography', label: 'Typography & Font' },
   ];
 
   useEffect(() => {
@@ -104,23 +102,15 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   useEffect(() => {
     setSelectedImage(null);
-    setRefineInstruction('');
     setShowSmartRemover(false);
     onResetRefinement();
   }, [imageResult.imageUrls, onResetRefinement]);
-
-  const handleRefineSubmit = () => {
-    if (selectedImage && refineInstruction) {
-      onRefineImage(selectedImage, refineInstruction);
-    }
-  };
 
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
       const layoutInstruction = convertLayoutToPrompt(localLayout);
-      // Cập nhật prompt cuối cùng từ bố cục đã xác nhận
-      setEditablePrompt(prev => prev.split('\n\n### LAYOUT ###')[0] + layoutInstruction);
+      setEditablePrompt(prev => prev.split('\n\n### SPATIAL LAYOUT ###')[0] + layoutInstruction);
   };
   
   const handleGenerateClick = (append: boolean) => {
@@ -134,79 +124,54 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
           const upscaleUrl = await upscaleImageTo4K(url, artDirection.recommendedAspectRatio);
           triggerDownload(upscaleUrl, `map-design-4k-${Date.now()}.png`);
       } catch (error) {
-          alert("Lỗi server AI Studio (500). Vui lòng thử lại.");
+          alert("Lỗi nâng cấp 4K.");
       } finally {
           setIsUpscaling(false);
       }
   };
 
-  const getReferenceSummary = () => {
-      if (request.referenceImages.length === 0) return "Không chọn";
-      return request.referenceImages.map((img, idx) => `Ảnh ${idx + 1}: ${img.attributes.join(', ')}`).join(' | ');
-  };
-
-  // Render Error State
   if (analysisError) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-red-950/20 rounded-3xl border border-red-500/30 p-10 animate-fade-in">
-        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-        </div>
-        <h3 className="text-xl font-black text-white uppercase tracking-widest mb-4">Lỗi Phân Tích</h3>
-        <p className="text-red-400 text-center text-sm font-bold max-w-md leading-relaxed">
-          {analysisError}
-        </p>
-        <p className="text-slate-500 text-[10px] uppercase tracking-widest mt-8 font-black">Vui lòng thử lại hoặc kiểm tra lại thông tin đầu vào</p>
+      <div className="h-full flex flex-col items-center justify-center bg-red-950/20 rounded-[3rem] border border-red-500/30 p-12 animate-fade-in text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 text-red-500 mb-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        <h3 className="text-2xl font-black text-white uppercase mb-4 tracking-tighter">Lỗi Phân Tích Kỹ Thuật</h3>
+        <p className="text-red-400 font-bold max-w-md mx-auto">{analysisError}</p>
+        <button onClick={() => window.location.reload()} className="mt-10 px-10 py-3 bg-slate-800 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest border border-white/5 shadow-xl transition-all active:scale-95">Tải lại Studio</button>
       </div>
     );
   }
 
   if (isAnalyzing) {
     return (
-        <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50">
+        <div className="h-full flex flex-col items-center justify-center bg-slate-900/40 rounded-[3.5rem] border border-white/5 backdrop-blur-xl">
              <div className="relative">
-                <div className="w-20 h-20 border-4 border-blue-500/20 rounded-full shadow-[0_0_50px_rgba(59,130,246,0.2)]"></div>
-                <div className="absolute inset-0 w-20 h-20 border-4 border-blue-500 border-t-purple-500 rounded-full animate-spin"></div>
+                <div className="w-24 h-24 border-4 border-[#FFD300]/20 rounded-full"></div>
+                <div className="absolute inset-0 w-24 h-24 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin"></div>
              </div>
-             <h3 className="text-xl font-black text-white uppercase tracking-widest mt-10">Đang Phân Tích Ý Tưởng...</h3>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-3 animate-pulse">AI Director đang lập kế hoạch thiết kế</p>
+             <h3 className="text-xl font-black text-white uppercase mt-12 tracking-[0.2em] animate-pulse">Director đang xử lý...</h3>
+             <p className="text-[10px] text-slate-500 font-black uppercase mt-4 tracking-widest">Lập kế hoạch thiết kế tối ưu</p>
         </div>
     );
   }
 
-  if (!artDirection && !imageResult.loading && imageResult.imageUrls.length === 0) {
+  if (!artDirection && imageResult.imageUrls.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-800/30 rounded-3xl border border-slate-700/50 border-dashed p-10 overflow-y-auto">
-        <div className="max-w-md w-full my-auto text-center">
-          <h3 className="text-xl font-black text-white mb-8 uppercase tracking-widest border-b border-slate-700 pb-5">Quy Trình Sáng Tạo</h3>
-          <ul className="text-slate-400 text-sm space-y-5 text-left">
-             {[
-               "Chọn Loại sản phẩm - kích thước",
-               "Yêu cầu nội dung & Assets",
-               "Lựa chọn Phong cách & Chất lượng",
-               "Lập kế hoạch - Điều chỉnh bố cục",
-               "Tạo file thiết kế - Lưu trữ",
-               "Hậu kỳ chuyên sâu (Tách nền, xóa AI) & Tải về 4K"
-             ].map((step, idx) => (
-                <li key={idx} className="flex items-start gap-4">
-                  <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-500 flex items-center justify-center font-black text-xs shrink-0">{idx + 1}</span>
-                  <span className="font-bold">{step}</span>
-                </li>
-             ))}
-          </ul>
+      <div className="h-full flex flex-col items-center justify-center bg-slate-900/30 rounded-[3.5rem] border border-white/5 border-dashed p-10 backdrop-blur-md">
+        <div className="text-center opacity-30">
+           <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 mx-auto text-slate-500 mb-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+           <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Trung Tâm Điều Hành Thiết Kế</h3>
+           <p className="text-[10px] text-slate-500 mt-3 font-bold uppercase tracking-widest leading-loose">Vui lòng nhập dữ liệu và nhấn phân tích để bắt đầu</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full gap-8 overflow-y-auto pr-2 relative">
+    <div className="flex flex-col h-full gap-8 overflow-y-auto pr-3 relative scrollbar-hide">
       {lightboxImage && (
-        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-xl animate-fade-in" onClick={() => setLightboxImage(null)}>
-            <img src={lightboxImage} alt="Full view" className="max-h-[85vh] max-w-full rounded-2xl shadow-2xl border border-white/5" />
-            <button className="mt-8 px-10 py-4 bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-widest rounded-2xl transition-all">Đóng Xem To</button>
+        <div className="fixed inset-0 z-[100] bg-black/98 flex flex-col items-center justify-center p-6 backdrop-blur-3xl animate-fade-in" onClick={() => setLightboxImage(null)}>
+            <img src={lightboxImage} alt="Full view" className="max-h-[88vh] max-w-full rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10" />
+            <p className="text-[10px] text-slate-500 font-black uppercase mt-6 tracking-[0.5em]">Nhấn bất kỳ đâu để đóng</p>
         </div>
       )}
       
@@ -215,53 +180,91 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
       )}
 
       {artDirection && localPlan && (
-        <div className="bg-slate-800/80 rounded-[2.5rem] border border-blue-500/30 overflow-hidden shadow-2xl backdrop-blur-md flex-shrink-0 animate-fade-in-down">
-           <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 px-8 py-4 border-b border-white/5 flex items-center justify-between">
-             <span className="text-white text-xs font-black tracking-widest uppercase">Bảng Kế Hoạch Sáng Tạo</span>
-             <span className="text-[10px] text-slate-400 bg-slate-950 px-3 py-1.5 rounded-full font-bold">AspectRatio: {artDirection.recommendedAspectRatio}</span>
+        <div className="bg-slate-900/80 rounded-[3.5rem] border border-white/5 overflow-hidden shadow-2xl backdrop-blur-3xl flex-shrink-0 animate-fade-in-down">
+           {/* MOODBOARD SUMMARY HEADER */}
+           <div className="p-10 pb-6 border-b border-white/5 bg-slate-950/50">
+              <div className="flex justify-between items-start mb-8">
+                 <div>
+                    <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Moodboard Summary</h3>
+                    <p className="text-[10px] text-[#FFD300] font-black uppercase tracking-widest mt-1.5 opacity-80">Phân tích dữ liệu & Tham chiếu sáng tạo</p>
+                 </div>
+                 <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-white font-black uppercase bg-slate-800/80 px-5 py-2.5 rounded-2xl border border-white/10 shadow-lg">{request.productType}</span>
+                    <span className="text-[10px] text-emerald-400 font-black uppercase bg-emerald-500/10 px-5 py-2.5 rounded-2xl border border-emerald-500/20 shadow-lg">Tỷ lệ: {artDirection.recommendedAspectRatio}</span>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                 <div className="space-y-6">
+                    <div className="p-6 bg-slate-950/80 rounded-[2.5rem] border border-white/5 shadow-inner group flex gap-4">
+                       <div className="flex-1">
+                          <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest block mb-2 group-hover:text-blue-400 transition-colors">Tiêu đề & Nội dung chính</span>
+                          <h4 className="text-white font-black text-xl uppercase leading-tight tracking-tight mb-2">{request.mainHeadline}</h4>
+                          <p className="text-xs text-slate-400 font-bold italic leading-relaxed line-clamp-2">"{request.secondaryText}"</p>
+                       </div>
+                       {request.mainHeadlineImage && (
+                          <div className="w-20 h-20 bg-slate-800 rounded-2xl overflow-hidden border border-white/10 shadow-lg group-hover:scale-110 transition-transform">
+                             <img src={request.mainHeadlineImage} className="w-full h-full object-cover" alt="Typo Ref" />
+                          </div>
+                       )}
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-4">
+                       {request.logoImage && (
+                          <div className="w-20 h-20 bg-white rounded-3xl overflow-hidden border-4 border-white/10 shadow-2xl p-1.5 transition-transform hover:scale-105">
+                             <img src={request.logoImage} className="w-full h-full object-contain" alt="Logo" />
+                          </div>
+                       )}
+                       <div className="flex gap-2.5">
+                           {request.assetImages.map((img, i) => (
+                              <div key={i} className="w-20 h-20 bg-slate-800 rounded-3xl overflow-hidden border-2 border-white/5 shadow-2xl group relative transition-transform hover:scale-105">
+                                 <img src={img} className="w-full h-full object-cover" alt="Product" />
+                                 <div className="absolute inset-0 bg-emerald-500/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                              </div>
+                           ))}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-4">
+                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest block ml-2">Moodboard References ({request.referenceImages.length})</span>
+                    <div className="flex gap-5 overflow-x-auto pb-4 scrollbar-hide">
+                       {request.referenceImages.map((ref, i) => (
+                          <div key={i} className="flex-shrink-0 group relative w-28 h-28 rounded-[2rem] overflow-hidden border-2 border-white/5 shadow-2xl cursor-help">
+                             <img src={ref.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Reference" />
+                             <div className="absolute inset-0 bg-black/70 flex flex-col justify-end p-3 opacity-0 group-hover:opacity-100 transition-all backdrop-blur-[2px]">
+                                {ref.attributes.map(attr => (
+                                   <span key={attr} className="text-[8px] text-[#FFD300] font-black uppercase tracking-tighter truncate leading-tight">✦ {attr}</span>
+                                ))}
+                             </div>
+                          </div>
+                       ))}
+                       {request.referenceImages.length === 0 && (
+                          <div className="w-full py-10 text-center bg-slate-950/30 rounded-[2rem] border border-white/5 border-dashed">
+                             <p className="text-[10px] text-slate-700 font-black uppercase tracking-widest italic">Không có ảnh tham chiếu</p>
+                          </div>
+                       )}
+                    </div>
+                 </div>
+              </div>
            </div>
            
-           <div className="p-8 space-y-8">
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1 tracking-widest">Tiêu đề chính</p>
-                    <p className="text-xs text-white font-bold">{request.mainHeadline}</p>
-                </div>
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1 tracking-widest">Nội dung phụ</p>
-                    <p className="text-xs text-white font-medium">{request.secondaryText || "Không có"}</p>
-                </div>
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1 tracking-widest">Tham khảo</p>
-                    <p className="text-[10px] text-emerald-400 font-bold leading-relaxed">{getReferenceSummary()}</p>
-                </div>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+           {/* DESIGN PLAN CRITERIA */}
+           <div className="p-10 space-y-10">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {criteriaList.map((item) => (
-                    <div key={item.key} className="bg-slate-900/50 p-5 rounded-3xl border border-slate-700/50 hover:border-blue-500/30 transition-all">
-                        <h4 className="text-[9px] text-blue-400 font-black uppercase mb-2 tracking-widest">{item.label}</h4>
+                    <div key={item.key} className="bg-slate-950/60 p-7 rounded-[2.5rem] border border-white/5 hover:border-[#FFD300]/20 transition-all shadow-inner group">
+                        <h4 className="text-[10px] text-slate-600 font-black uppercase mb-4 tracking-[0.2em] flex items-center gap-2 group-hover:text-slate-400 transition-colors">
+                           <div className="w-2 h-2 bg-[#FFD300] rounded-full shadow-[0_0_10px_rgba(255,211,0,0.5)]"></div>
+                           {item.label}
+                        </h4>
                         <textarea 
                           value={localPlan[item.key] || ''} 
                           onChange={(e) => setLocalPlan(prev => prev ? {...prev, [item.key]: e.target.value} : null)} 
-                          className="w-full bg-transparent text-slate-300 text-[11px] font-bold outline-none resize-none min-h-[70px] leading-relaxed" 
+                          className="w-full bg-transparent text-slate-300 text-[11px] font-bold outline-none resize-none min-h-[85px] leading-relaxed placeholder-slate-800 scrollbar-hide" 
                         />
                     </div>
                 ))}
-             </div>
-
-             <div className="flex justify-between items-center bg-slate-900/80 p-4 rounded-2xl border border-blue-500/20">
-                <div>
-                   <h4 className="text-white text-xs font-black uppercase tracking-widest">Đồng bộ hóa kế hoạch</h4>
-                   <p className="text-[10px] text-slate-500 mt-1 font-medium">Sau khi điều chỉnh 6 tiêu chí, nhấn nút bên phải để cập nhật lại trình bố cục</p>
-                </div>
-                <button 
-                  onClick={() => localPlan && onUpdatePlan(localPlan)} 
-                  disabled={isUpdatingPlan}
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-6 py-2.5 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-blue-900/40 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {isUpdatingPlan ? "Đang đồng bộ..." : "Cập nhật Trình Bố Cục"}
-                </button>
              </div>
 
              {localLayout && (
@@ -269,74 +272,65 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                     layout={localLayout} 
                     onLayoutChange={(updated) => setLocalLayout(updated)} 
                     onConfirm={handleLayoutConfirm} 
-                    onUpdateDescription={() => {}} // Đã bỏ logic ở editor
+                    onUpdateDescription={() => {}} 
                     isUpdatingDescription={false} 
                  />
              )}
 
-             <div className="rounded-3xl border border-slate-700 overflow-hidden shadow-inner bg-slate-950">
-                <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
-                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">AI Synthesis Prompt (Final)</span>
-                    <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-emerald-500 font-black uppercase bg-emerald-500/10 px-2 py-1 rounded">Auto-Synced</span>
-                    </div>
+             {/* PROMPT BOX UI */}
+             <div className="space-y-5">
+                <div className="flex justify-between items-center px-6">
+                    <h4 className="text-[10px] text-slate-500 font-black uppercase tracking-widest flex items-center gap-3">
+                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                       AI Final Design Prompt
+                    </h4>
+                    <button onClick={() => { navigator.clipboard.writeText(editablePrompt); alert('Đã sao chép prompt!'); }} className="text-[10px] text-[#FFD300] hover:text-[#FFC000] font-black uppercase flex items-center gap-2.5 transition-all active:scale-95 group">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                        <span className="border-b-2 border-transparent group-hover:border-[#FFD300]">Sao chép Prompt</span>
+                    </button>
                 </div>
-                <Editor height="120px" defaultLanguage="markdown" theme="vs-dark" value={editablePrompt} onChange={(val) => setEditablePrompt(val || '')} options={{ minimap: { enabled: false }, fontSize: 11, padding: { top: 10, bottom: 10 } }} />
+                <div className="bg-slate-950 rounded-[3rem] p-10 border border-white/5 shadow-[inset_0_20px_40px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-[#FFD300] via-blue-500 to-purple-600 opacity-40"></div>
+                    <textarea 
+                       className="w-full bg-transparent text-slate-400 text-[12px] font-mono leading-loose outline-none resize-none min-h-[180px] relative z-10 scrollbar-hide focus:text-blue-200 transition-colors"
+                       value={editablePrompt}
+                       onChange={(e) => setEditablePrompt(e.target.value)}
+                       placeholder="Đang trích xuất prompt thiết kế..."
+                    />
+                    <div className="absolute bottom-6 right-8 text-[10px] text-slate-800 font-black uppercase tracking-[0.2em] select-none">M.A.P Studio Engine</div>
+                </div>
              </div>
 
-             {imageResult.imageUrls.length === 0 && !imageResult.loading && (
-                 <button onClick={() => handleGenerateClick(false)} className="w-full py-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-[1.5rem] text-white font-black shadow-2xl shadow-emerald-900/30 transition-all active:scale-95 uppercase tracking-widest">
-                    Xác Nhận & Tiến Hành Tạo Thiết Kế
+             <div className="flex gap-6">
+                 <button onClick={() => localPlan && onUpdatePlan(localPlan)} disabled={isUpdatingPlan} className="flex-1 py-7 bg-slate-800/80 hover:bg-slate-700 text-white rounded-3xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 border border-white/5 shadow-xl active:scale-95">
+                    {isUpdatingPlan ? "Đang đồng bộ..." : "Cập nhật DNA Thiết kế"}
                  </button>
-             )}
+                 <button onClick={() => handleGenerateClick(false)} className="flex-[2] py-7 bg-[#FFD300] hover:bg-[#FFC000] text-black font-black rounded-3xl shadow-2xl shadow-[#FFD300]/20 transition-all active:scale-95 uppercase tracking-[0.2em] text-[11px] border-t-2 border-white/20">
+                    Sản Xuất Hình Ảnh Kết Quả
+                 </button>
+             </div>
            </div>
         </div>
       )}
 
       {imageResult.imageUrls.length > 0 && (
-          <div className="flex-grow flex flex-col gap-6 animate-fade-in-up">
-            <div className="flex items-center justify-between">
-                <h3 className="text-white font-black text-xl uppercase tracking-tighter flex items-center gap-3">
-                   Kết Quả Studio
-                   <span className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full font-bold">1 hàng 3 mẫu</span>
-                </h3>
-                {imageResult.loading ? (
-                    <span className="text-[10px] text-purple-400 font-black animate-pulse uppercase tracking-widest">Đang tạo thêm...</span>
-                ) : (
-                    <button onClick={() => handleGenerateClick(true)} className="text-[10px] text-slate-500 hover:text-white border border-slate-800 px-6 py-2 rounded-full font-black uppercase tracking-widest transition-all">Tạo thêm mẫu mới</button>
-                )}
+          <div className="flex-grow flex flex-col gap-10 animate-fade-in-up pb-32">
+            <div className="flex items-center justify-between px-6">
+                <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Studio Portfolio Output</h3>
+                <button onClick={() => handleGenerateClick(true)} className="text-[10px] text-[#FFD300] hover:text-white border-2 border-[#FFD300]/20 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all backdrop-blur-3xl hover:bg-[#FFD300]/10">Tạo thêm biến thể</button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4">
                 {imageResult.imageUrls.map((url, idx) => (
                 <div 
                   key={idx} 
-                  className={`group relative rounded-[2rem] overflow-hidden border-2 transition-all cursor-pointer bg-slate-900 flex flex-col ${selectedImage === url ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-slate-800 hover:border-slate-600'}`} 
+                  className={`group relative rounded-[3.5rem] overflow-hidden border-2 transition-all duration-700 cursor-pointer bg-slate-900 shadow-2xl ${selectedImage === url ? 'border-[#FFD300] ring-[12px] ring-[#FFD300]/5 scale-[0.98]' : 'border-white/5 hover:border-white/20'}`} 
                   onClick={() => setSelectedImage(selectedImage === url ? null : url)}
                 >
-                    <div className="w-full aspect-square relative">
-                        <img src={url} alt="Result" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[2px]">
-                            <button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-4 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-xl border border-white/10 shadow-2xl transition-all active:scale-90">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                            </button>
-                        </div>
-                        {selectedImage === url && (
-                            <div className="absolute top-4 right-4 bg-emerald-500 text-white p-2 rounded-full shadow-2xl ring-4 ring-white/10 z-10 animate-scale-up">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
-                            </div>
-                        )}
-                    </div>
-                    <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-500 font-black uppercase">Mẫu #{idx+1}</span>
-                        <div className="flex items-center gap-2">
-                            <input 
-                              type="checkbox" 
-                              checked={selectedImage === url} 
-                              onChange={() => setSelectedImage(selectedImage === url ? null : url)}
-                              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
-                            />
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">Lựa chọn</span>
+                    <div className="w-full aspect-square relative overflow-hidden">
+                        <img src={url} alt="Result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[3px]">
+                            <button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-6 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-3xl border border-white/20 shadow-2xl transition-all active:scale-75">🔍</button>
                         </div>
                     </div>
                 </div>
@@ -345,78 +339,31 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
           </div>
       )}
 
-      {selectedImage && !imageResult.loading && (
-        <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 sticky bottom-0 z-20 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] animate-fade-in-up">
-           <div className="flex items-center justify-between mb-8">
-             <div>
-                <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Công cụ hiệu chỉnh chuyên sâu</h3>
-                <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest mt-1">Đang áp dụng cho mẫu được chọn</p>
+      {selectedImage && (
+        <div className="bg-slate-950/90 border-t border-white/10 p-10 fixed bottom-0 left-0 right-0 z-[60] backdrop-blur-3xl animate-fade-in-up shadow-[0_-30px_60px_rgba(0,0,0,0.8)]">
+           <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-10">
+             <div className="flex items-center gap-8">
+                <div className="w-20 h-20 rounded-[2rem] overflow-hidden border-2 border-white/10 shadow-2xl transform -rotate-3">
+                   <img src={selectedImage} className="w-full h-full object-cover" alt="Selected" />
+                </div>
+                <div>
+                   <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Xác Nhận Thiết Kế</h3>
+                   <p className="text-[10px] text-[#FFD300] font-black uppercase tracking-widest mt-1.5 flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                      Chế độ hậu kỳ & xuất bản chuyên nghiệp
+                   </p>
+                </div>
              </div>
-             <div className="flex gap-3">
-                 <button onClick={() => onSaveDesign(selectedImage, editablePrompt)} disabled={isSaving} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl border border-slate-700 transition-all disabled:opacity-50">Lưu Thư Viện</button>
-                 <button onClick={() => handleDownload4K(selectedImage)} disabled={isUpscaling} className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-2xl shadow-emerald-900/40 transition-all active:scale-95 disabled:opacity-50">
-                   {isUpscaling ? 'Đang Kết Xuất 4K...' : 'Tải File In (4K)'}
+             
+             <div className="flex flex-wrap justify-center gap-5">
+                 <button onClick={() => onSaveDesign(selectedImage, editablePrompt)} disabled={isSaving} className="px-10 py-5 bg-slate-900 hover:bg-slate-850 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 transition-all disabled:opacity-50 shadow-xl">Lưu Portfolio</button>
+                 <button onClick={() => onSeparateLayout(selectedImage, 'background')} className="px-10 py-5 bg-slate-950 border border-blue-500/20 text-blue-400 text-[10px] font-black rounded-2xl hover:bg-blue-500/10 transition-all uppercase tracking-[0.2em] shadow-xl">Tách Nền Layer</button>
+                 <button onClick={() => setShowSmartRemover(true)} className="px-10 py-5 bg-slate-950 border border-red-500/20 text-red-400 text-[10px] font-black rounded-2xl hover:bg-red-500/10 transition-all uppercase tracking-[0.2em] shadow-xl">AI Eraser</button>
+                 <button onClick={() => handleDownload4K(selectedImage)} disabled={isUpscaling} className="px-12 py-5 bg-gradient-to-br from-[#FFD300] to-[#FFA000] text-black text-[11px] font-black uppercase tracking-[0.25em] rounded-2xl shadow-2xl shadow-[#FFD300]/20 transition-all active:scale-95 disabled:opacity-50 border-t-2 border-white/30">
+                   {isUpscaling ? 'Đang Nâng Cấp...' : 'Tải File In 4K'}
                  </button>
              </div>
            </div>
-
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => onSeparateLayout(selectedImage, 'background')} className="bg-slate-950 border border-blue-500/40 text-blue-400 text-[11px] font-black py-4 rounded-2xl hover:bg-blue-500/10 transition-all uppercase tracking-widest shadow-xl">Tách Nền Chi Tiết</button>
-                <button onClick={() => setShowSmartRemover(true)} className="bg-slate-950 border border-red-500/40 text-red-400 text-[11px] font-black py-4 rounded-2xl hover:bg-red-500/10 transition-all uppercase tracking-widest shadow-xl">Xóa Chi Tiết AI</button>
-              </div>
-              <div className="flex gap-3">
-                 <div className="flex-grow bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col">
-                    <textarea className="bg-transparent text-white text-[11px] font-bold outline-none h-14 resize-none placeholder-slate-700" placeholder="Yêu cầu hiệu chỉnh bằng lời (Vd: thêm ánh sáng xanh, thay đổi font chữ...)" value={refineInstruction} onChange={(e) => setRefineInstruction(e.target.value)} />
-                    <button onClick={handleRefineSubmit} disabled={!refineInstruction || refinementResult.loading} className="ml-auto mt-2 bg-purple-600 hover:bg-purple-500 text-white text-[9px] font-black px-5 py-2 rounded-xl transition-all uppercase tracking-widest disabled:opacity-30">Thực Hiện Hiệu Chỉnh</button>
-                 </div>
-              </div>
-           </div>
-           
-           {(refinementResult.loading || refinementResult.imageUrls.length > 0 || separatedAssets.loading || separatedAssets.background) && (
-               <div className="mt-8 pt-8 border-t border-slate-800">
-                    <h4 className="text-[10px] font-black text-purple-400 uppercase mb-5 tracking-widest">Sản phẩm hậu kỳ:</h4>
-                    <div className="flex gap-6 overflow-x-auto pb-4 scroll-smooth">
-                        {(refinementResult.loading || separatedAssets.loading) ? (
-                            <div className="flex gap-6">
-                                <div className="w-40 h-40 bg-slate-950 animate-pulse rounded-2xl border border-slate-800" />
-                                <div className="w-40 h-40 bg-slate-950 animate-pulse rounded-2xl border border-slate-800" />
-                            </div>
-                        ) : (
-                            <>
-                                {refinementResult.imageUrls.map((url, i) => (
-                                    <div key={i} className="flex flex-col gap-3 min-w-[160px] animate-scale-up">
-                                        <div className="relative group rounded-2xl overflow-hidden border border-purple-500/50 shadow-2xl bg-black">
-                                            <img src={url} className="w-full aspect-square object-contain" alt="Refined" />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                <button onClick={() => setLightboxImage(url)} className="p-3 bg-white/20 rounded-full text-white backdrop-blur-md">🔍</button>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-1.5">
-                                            <button onClick={() => triggerDownload(url, `edit-orig-${Date.now()}.png`)} className="w-full py-2 bg-slate-800 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-slate-700">Tải Gốc</button>
-                                            <button onClick={() => handleDownload4K(url)} className="w-full py-2 bg-purple-600 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-purple-500">Tải 4K</button>
-                                        </div>
-                                    </div>
-                                ))}
-                                {separatedAssets.background && (
-                                    <div className="flex flex-col gap-3 min-w-[160px] animate-scale-up">
-                                        <div className="relative group rounded-2xl overflow-hidden border border-blue-500/50 shadow-2xl bg-black">
-                                            <img src={separatedAssets.background} className="w-full aspect-square object-contain" alt="Separated" />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                <button onClick={() => setLightboxImage(separatedAssets.background!)} className="p-3 bg-white/20 rounded-full text-white backdrop-blur-md">🔍</button>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-1.5">
-                                            <button onClick={() => triggerDownload(separatedAssets.background!, `bg-orig-${Date.now()}.png`)} className="w-full py-2 bg-slate-800 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-slate-700">Tải Nền Gốc</button>
-                                            <button onClick={() => handleDownload4K(separatedAssets.background!)} className="w-full py-2 bg-blue-600 text-white text-[9px] font-black rounded-lg uppercase transition-all hover:bg-blue-500">Tải Nền 4K</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-               </div>
-           )}
         </div>
       )}
     </div>
