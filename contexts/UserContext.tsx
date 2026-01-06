@@ -11,13 +11,14 @@ interface AuthContextType {
   logout: () => void;
   deleteAccountData: () => Promise<void>;
   checkApiKeyStatus: () => Promise<boolean>;
-  requestApiKey: () => Promise<void>;
+  saveApiKey: (key: string) => void; // New function
   isAiStudioEnvironment: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'map_app_user_v3';
+const API_KEY_STORAGE = 'gemini_api_key';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserSettings | null>(null);
@@ -48,6 +49,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    // Không xoá API Key khi logout để người dùng không phải nhập lại, trừ khi họ muốn
+    // localStorage.removeItem(API_KEY_STORAGE); 
     window.location.reload();
   };
 
@@ -68,20 +71,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
         return await (window as any).aistudio.hasSelectedApiKey();
       }
-      // Nếu không có aistudio, kiểm tra xem process.env.API_KEY có sẵn không
-      return !!process.env.API_KEY;
+      
+      // Kiểm tra process.env
+      if (process.env.API_KEY && process.env.API_KEY.length > 0) return true;
+      
+      // Kiểm tra localStorage
+      const localKey = localStorage.getItem(API_KEY_STORAGE);
+      if (localKey && localKey.length > 10) return true;
+
+      return false;
     } catch (e) {
       console.warn("Lỗi khi kiểm tra API Key status:", e);
       return false;
     }
   };
 
-  const requestApiKey = async () => {
-    if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
-      await (window as any).aistudio.openSelectKey();
-    } else {
-      alert("Tính năng chọn API Key chỉ khả dụng trong môi trường Google AI Studio. Nếu bạn đang chạy local, hãy đảm bảo đã cấu hình process.env.API_KEY.");
-    }
+  const saveApiKey = (key: string) => {
+      if (!key) return;
+      localStorage.setItem(API_KEY_STORAGE, key.trim());
   };
 
   return (
@@ -91,7 +98,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout, 
       deleteAccountData,
       checkApiKeyStatus,
-      requestApiKey,
+      saveApiKey,
       isAiStudioEnvironment
     }}>
       {children}

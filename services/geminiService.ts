@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, DesignPlan, LayoutSuggestion, AnalysisModel, SeparatedAssets } from "../types";
 
@@ -24,6 +25,24 @@ const getGeminiClient = () => {
   // Khởi tạo SDK instance mới tại chỗ
   return new GoogleGenAI({ apiKey });
 };
+
+// --- NEW VALIDATION FUNCTION ---
+export const validateApiKey = async (key: string): Promise<boolean> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: key });
+    // Thử gọi một request siêu nhẹ để kiểm tra key
+    await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: { parts: [{ text: 'Hi' }] },
+      config: { maxOutputTokens: 1 }
+    });
+    return true;
+  } catch (error) {
+    console.error("API Key Validation Failed:", error);
+    return false;
+  }
+};
+// ------------------------------
 
 // --- COST ESTIMATION UTILS ---
 export const estimateRequestCost = (request: ArtDirectionRequest): number => {
