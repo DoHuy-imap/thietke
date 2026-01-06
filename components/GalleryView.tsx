@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { getAllDesigns, deleteDesign } from '../services/historyDb';
 import { DesignDNA } from '../types';
@@ -140,14 +139,21 @@ const GalleryView: React.FC = () => {
       )}
 
       {isEditing && selectedDesign && (
-          <SmartRemover imageUrl={editResult || selectedDesign.thumbnail} onClose={() => setIsEditing(false)} isProcessing={isProcessingEdit} onProcess={async (mask, text) => {
+          <SmartRemover 
+            imageUrl={editResult || selectedDesign.thumbnail} 
+            onClose={() => setIsEditing(false)} 
+            isProcessing={isProcessingEdit} 
+            onProcess={async (mask, text) => {
               setIsProcessingEdit(true);
               try {
                 const res = await removeObjectWithMask(editResult || selectedDesign.thumbnail, mask, text);
                 if (res) { setEditResult(res); }
               } catch(e) { alert("Lỗi xử lý."); }
               finally { setIsProcessingEdit(false); }
-          }} resultUrl={null} />
+            }} 
+            resultUrl={editResult}
+            aspectRatio={selectedDesign.recommendedAspectRatio}
+          />
       )}
     </div>
   );

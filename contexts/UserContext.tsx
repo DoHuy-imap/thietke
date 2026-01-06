@@ -24,8 +24,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserSettings | null>(null);
   const [isAiStudioEnvironment, setIsAiStudioEnvironment] = useState(false);
   
-  // Sử dụng useRef để lưu timeout ID, tránh vấn đề scope và re-render
-  const timeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Use 'any' to avoid TypeScript environment conflicts (Node vs Browser) for setTimeout
+  const timeoutIdRef = useRef<any>(null);
 
   useEffect(() => {
     // Check environment
@@ -50,17 +50,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = useCallback(() => {
-    // Xóa timer nếu đang chạy
-    if (timeoutIdRef.current) clearTimeout(timeoutIdRef.current);
+    console.log("Logging out...");
     
+    // 1. Clear auto-logout timer
+    if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current);
+        timeoutIdRef.current = null;
+    }
+    
+    // 2. Clear State
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
     
-    // YÊU CẦU QUAN TRỌNG: Xóa API Key để người dùng phải nhập lại
-    localStorage.removeItem(API_KEY_STORAGE);
+    // 3. Clear Storage (Wrap in try-catch for safety)
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(API_KEY_STORAGE);
+    } catch (e) {
+        console.error("Error clearing storage:", e);
+    }
     
-    // Tải lại trang để xóa sạch bộ nhớ và reset về màn hình Login
-    window.location.reload();
+    // 4. Force Reload to reset app state completely
+    // Use setTimeout to ensure UI updates or events clear before reload
+    setTimeout(() => {
+        window.location.reload();
+    }, 100);
   }, []);
 
   // --- AUTO LOGOUT LOGIC ---
@@ -70,6 +83,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const resetTimer = () => {
       if (timeoutIdRef.current) clearTimeout(timeoutIdRef.current);
       timeoutIdRef.current = setTimeout(() => {
+        // Use a flag or check if still logged in to prevent duplicate alerts
         alert("Phiên làm việc đã hết hạn do 30 phút không hoạt động. Vui lòng đăng nhập lại.");
         logout();
       }, INACTIVITY_LIMIT);
@@ -81,24 +95,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Khởi tạo timer lần đầu
     resetTimer();
 
-    // Hàm xử lý sự kiện (chỉ đơn giản là reset timer)
+    // Hàm xử lý sự kiện
     const handleActivity = () => resetTimer();
 
-    // Gán sự kiện vào window để bắt trọn vẹn nhất
+    // Gán sự kiện vào window
     events.forEach(event => window.addEventListener(event, handleActivity));
 
-    // Cleanup khi component unmount hoặc user logout
+    // Cleanup
     return () => {
       if (timeoutIdRef.current) clearTimeout(timeoutIdRef.current);
       events.forEach(event => window.removeEventListener(event, handleActivity));
     };
-  }, [user, logout]);
-  // -------------------------
+  }, [user, logout]); // Depend on logout
 
   const deleteAccountData = async () => {
     if (!user) return;
-    const { deleteDesignsByAuthor } = await import('../services/historyDb');
     try {
+      // Dynamic import to avoid circular dependency issues if any
+      const { deleteDesignsByAuthor } = await import('../services/historyDb');
       await deleteDesignsByAuthor(user.displayName);
       logout();
     } catch (error) {
@@ -113,10 +127,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return await (window as any).aistudio.hasSelectedApiKey();
       }
       
-      // Nếu có key trong env, ưu tiên trả về true (App tự cấu hình)
       if (process.env.API_KEY && process.env.API_KEY.length > 0) return true;
       
-      // Kiểm tra localStorage (Key người dùng nhập)
       const localKey = localStorage.getItem(API_KEY_STORAGE);
       if (localKey && localKey.length > 10) return true;
 

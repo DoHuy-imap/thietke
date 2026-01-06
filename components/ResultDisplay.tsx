@@ -163,7 +163,14 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
       )}
       
       {showSmartRemover && selectedImage && (
-          <SmartRemover imageUrl={selectedImage} onClose={() => setShowSmartRemover(false)} isProcessing={refinementResult.loading} onProcess={(mask, text) => onSmartRemove(selectedImage, mask, text)} resultUrl={null} />
+          <SmartRemover 
+            imageUrl={selectedImage} 
+            onClose={() => setShowSmartRemover(false)} 
+            isProcessing={refinementResult.loading} 
+            onProcess={(mask, text) => onSmartRemove(selectedImage, mask, text)} 
+            resultUrl={null} 
+            aspectRatio={artDirection?.recommendedAspectRatio || "1:1"}
+          />
       )}
 
       {artDirection && localPlan && (
@@ -216,18 +223,41 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
              <div className="flex gap-6">
                  <button onClick={() => localPlan && onUpdatePlan(localPlan)} disabled={isUpdatingPlan} className="flex-1 py-7 bg-slate-800/80 hover:bg-slate-700 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 border border-white/5 shadow-xl">Cập nhật Kế hoạch</button>
-                 <button onClick={() => handleGenerateClick(false)} className="flex-[2] py-7 bg-[#FFD300] hover:bg-[#FFC000] text-black font-black rounded-3xl shadow-2xl transition-all uppercase tracking-widest text-[11px] border-t-2 border-white/20">Sản Xuất Hình Ảnh</button>
+                 <button onClick={() => handleGenerateClick(false)} disabled={imageResult.loading} className="flex-[2] py-7 bg-[#FFD300] hover:bg-[#FFC000] text-black font-black rounded-3xl shadow-2xl transition-all uppercase tracking-widest text-[11px] border-t-2 border-white/20 disabled:opacity-50 disabled:cursor-wait">
+                    {imageResult.loading ? 'Đang thực hiện...' : 'Sản Xuất Hình Ảnh'}
+                 </button>
              </div>
            </div>
         </div>
       )}
 
-      {imageResult.imageUrls.length > 0 && (
+      {/* Loading Overlay or Results */}
+      {(imageResult.imageUrls.length > 0 || imageResult.loading) && (
           <div className="flex-grow flex flex-col gap-10 pb-32">
-            <div className="flex items-center justify-between px-6"><h3 className="text-white font-black text-2xl uppercase tracking-tighter">Studio Output</h3><button onClick={() => handleGenerateClick(true)} className="text-[10px] text-[#FFD300] hover:text-white border-2 border-[#FFD300]/20 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all">Thêm biến thể</button></div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4">
-                {imageResult.imageUrls.map((url, idx) => (<div key={idx} className={`group relative rounded-[3.5rem] overflow-hidden border-2 transition-all duration-700 cursor-pointer bg-slate-900 shadow-2xl ${selectedImage === url ? 'border-[#FFD300] ring-[12px] ring-[#FFD300]/5 scale-[0.98]' : 'border-white/5 hover:border-white/20'}`} onClick={() => setSelectedImage(selectedImage === url ? null : url)}><div className="w-full aspect-square relative overflow-hidden"><img src={url} alt="Result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[3px]"><button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-6 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-3xl border border-white/20 shadow-2xl transition-all active:scale-75">🔍</button></div></div></div>))}
+            <div className="flex items-center justify-between px-6">
+                <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Studio Output</h3>
+                <button onClick={() => handleGenerateClick(true)} disabled={imageResult.loading} className="text-[10px] text-[#FFD300] hover:text-white border-2 border-[#FFD300]/20 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all disabled:opacity-50">Thêm biến thể</button>
             </div>
+            
+            {/* Explicit Loading State */}
+            {imageResult.loading && (
+                <div className="w-full h-80 bg-slate-900/50 rounded-[3.5rem] border border-white/5 flex flex-col items-center justify-center animate-pulse gap-6 mx-4">
+                     <div className="relative">
+                        <div className="w-20 h-20 border-4 border-[#FFD300]/30 rounded-full animate-spin"></div>
+                        <div className="absolute top-0 left-0 w-20 h-20 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin" style={{ animationDuration: '1s' }}></div>
+                     </div>
+                     <div className="text-center">
+                         <h4 className="text-white font-black uppercase tracking-widest text-sm mb-1">AI Đang Vẽ...</h4>
+                         <p className="text-[10px] text-slate-500 uppercase tracking-widest">Đang kết xuất chi tiết & ánh sáng</p>
+                     </div>
+                </div>
+            )}
+
+            {!imageResult.loading && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4">
+                    {imageResult.imageUrls.map((url, idx) => (<div key={idx} className={`group relative rounded-[3.5rem] overflow-hidden border-2 transition-all duration-700 cursor-pointer bg-slate-900 shadow-2xl ${selectedImage === url ? 'border-[#FFD300] ring-[12px] ring-[#FFD300]/5 scale-[0.98]' : 'border-white/5 hover:border-white/20'}`} onClick={() => setSelectedImage(selectedImage === url ? null : url)}><div className="w-full aspect-square relative overflow-hidden"><img src={url} alt="Result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[3px]"><button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-6 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-3xl border border-white/20 shadow-2xl transition-all active:scale-75">🔍</button></div></div></div>))}
+                </div>
+            )}
           </div>
       )}
 

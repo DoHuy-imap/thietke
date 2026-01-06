@@ -347,7 +347,7 @@ export const separateDesignLayers = async (
 // Compatibility export
 export const separateDesignComponents = async (
     _p: string, ar: string, sz: string, img: string, mode: string
-): Promise<Partial<SeparatedAssets>> => {
+): Promise<SeparatedAssets> => {
     const res = await separateDesignLayers(img, ar, sz);
     return res;
 };

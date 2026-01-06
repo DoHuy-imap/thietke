@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useEffect } from 'react';
 import { upscaleImageTo4K } from '../services/geminiService';
 
@@ -27,6 +26,7 @@ interface SmartRemoverProps {
   onProcess: (maskBase64: string, textDescription: string) => void;
   isProcessing: boolean;
   resultUrl?: string | null;
+  aspectRatio?: string; // New Prop for accurate 4K upscaling
 }
 
 interface DrawPath {
@@ -35,7 +35,7 @@ interface DrawPath {
   size: number;
 }
 
-const SmartRemover: React.FC<SmartRemoverProps> = ({ imageUrl, onClose, onProcess, isProcessing, resultUrl }) => {
+const SmartRemover: React.FC<SmartRemoverProps> = ({ imageUrl, onClose, onProcess, isProcessing, resultUrl, aspectRatio = "1:1" }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushSize, setBrushSize] = useState(40);
@@ -154,7 +154,7 @@ const SmartRemover: React.FC<SmartRemoverProps> = ({ imageUrl, onClose, onProces
       if (!resultUrl) return;
       setIsUpscaling(true);
       try {
-          const res = await upscaleImageTo4K(resultUrl, "1:1");
+          const res = await upscaleImageTo4K(resultUrl, aspectRatio);
           triggerDownload(res, `map-erased-4k-${Date.now()}.png`);
       } catch (e) { alert("Lỗi nâng cấp 4K."); }
       finally { setIsUpscaling(false); }

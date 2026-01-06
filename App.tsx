@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
@@ -261,7 +260,8 @@ const App: React.FC = () => {
       </div>
 
       <div className="relative z-10 container mx-auto px-4 py-6 h-screen flex flex-col">
-        <header className="flex items-center justify-between mb-6 shrink-0 bg-slate-900/40 p-4 rounded-3xl border border-white/5 backdrop-blur-md">
+        {/* ADDED z-50 to header to ensure dropdown stays on top of main content */}
+        <header className="flex items-center justify-between mb-6 shrink-0 bg-slate-900/40 p-4 rounded-3xl border border-white/5 backdrop-blur-md relative z-50">
           <div className="flex items-center gap-4">
              <MapMiniLogo />
              <div>
@@ -304,7 +304,13 @@ const App: React.FC = () => {
                           <p className="text-sm text-white font-black truncate">{user.displayName}</p>
                        </div>
                        
-                       <button onClick={logout} className="w-full px-5 py-3 text-left hover:bg-slate-800 flex items-center gap-3 text-slate-300 transition-colors">
+                       <button 
+                            onClick={() => { 
+                                setShowUserMenu(false);
+                                logout(); 
+                            }} 
+                            className="w-full px-5 py-3 text-left hover:bg-slate-800 flex items-center gap-3 text-slate-300 transition-colors"
+                        >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                           </svg>
@@ -312,7 +318,9 @@ const App: React.FC = () => {
                        </button>
 
                        <button 
-                         onClick={async () => {
+                         onClick={async (e) => {
+                           e.stopPropagation();
+                           setShowUserMenu(false);
                            if(window.confirm('XÓA VĨNH VIỄN toàn bộ thiết kế của bạn? Hành động này không thể hoàn tác.')) {
                              await deleteAccountData();
                            }
