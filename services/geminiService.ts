@@ -1,5 +1,4 @@
-
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, DesignPlan, LayoutSuggestion, AnalysisModel, SeparatedAssets } from "../types";
 
 const MODEL_IMAGE_GEN = "gemini-3-pro-image-preview"; 
@@ -14,26 +13,26 @@ const safeExtractBase64 = (dataUrl: string | null): string | null => {
 };
 
 // Helper: Get AI Client safely (Lazy Load)
-const getGeminiClient = () => {
+const getGeminiClient = (key?: string) => {
   // Lấy key mới nhất từ môi trường hoặc localStorage mỗi khi hàm này được gọi
-  const apiKey = process.env.API_KEY || localStorage.getItem('gemini_api_key');
+  const apiKey = key || process.env.API_KEY || localStorage.getItem('gemini_api_key');
   
   if (!apiKey || apiKey === "undefined" || apiKey.trim() === "") {
     throw new Error("API Key chưa được kết nối. Vui lòng nhấn vào tên người dùng và chọn 'Kết nối lại API Key'.");
   }
   
   // Khởi tạo SDK instance mới tại chỗ (Standard SDK)
-  return new GoogleGenerativeAI(apiKey);
+  return new GoogleGenAI({ apiKey });
 };
 
 // --- NEW VALIDATION FUNCTION ---
 export const validateApiKey = async (key: string): Promise<boolean> => {
   try {
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: "Hi" }] }],
-      generationConfig: { maxOutputTokens: 1 }
+    const ai = new GoogleGenAI({ apiKey: key });
+    await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: "Hi",
+      config: { maxOutputTokens: 1 }
     });
     return true;
   } catch (error) {
@@ -45,6 +44,7 @@ export const validateApiKey = async (key: string): Promise<boolean> => {
 
 // --- COST ESTIMATION UTILS ---
 export const estimateRequestCost = (request: ArtDirectionRequest): number => {
+    // gemini-3-pro-preview vs gemini-3-flash-preview pricing (estimated placeholders)
     const ratePer1kTokens = request.analysisModel === AnalysisModel.PRO ? 90 : 2;
     
     // Estimate Text Tokens (1 token ~= 4 chars)
@@ -80,9 +80,10 @@ export const convertLayoutToPrompt = (layout: LayoutSuggestion): string => {
 };
 
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
-  const genAI = getGeminiClient();
+  const ai = getGeminiClient();
   
-  const modelId = request.analysisModel === AnalysisModel.PRO ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
+  // Update model names as per guidelines
+  const modelId = request.analysisModel === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
   const referenceContext = request.referenceImages.map((ref, idx) => 
     `Reference ${idx + 1} focus: ${ref.attributes.join(', ')}.`
@@ -92,7 +93,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
       ? "EXTRACT AND APPLY COLORS FROM THE PROVIDED LOGO." 
       : (request.colorMode === ColorMode.CUSTOM ? `Color Palette: ${request.customColors.join(', ')}` : 'Auto selection based on style.');
 
-  // Construct parts for standard SDK
+  // Construct parts
   const parts: any[] = [{ text: `
     Project Type: ${request.productType}
     Main Title: "${request.mainHeadline}"
@@ -137,30 +138,30 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     }
   });
 
-  const model = genAI.getGenerativeModel({ 
+  const response = await ai.models.generateContent({
     model: modelId,
-    systemInstruction: "You are a Senior Art Director. Create a 6-criteria plan. Split 'Secondary Content' by newline. If TYPOGRAPHY STYLE REFERENCE provided, apply it. Return JSON. Coordinates 0-100. RECOMMENDED ASPECT RATIO MUST BE ONE OF: '1:1', '3:4', '4:3', '9:16', '16:9'."
-  });
-
-  const response = await model.generateContent({
-    contents: [{ role: "user", parts }],
-    generationConfig: {
+    contents: { parts },
+    config: {
+      systemInstruction: "You are a Senior Art Director. Create a 6-criteria plan. Split 'Secondary Content' by newline. If TYPOGRAPHY STYLE REFERENCE provided, apply it. Return JSON. Coordinates 0-100. RECOMMENDED ASPECT RATIO MUST BE ONE OF: '1:1', '3:4', '4:3', '9:16', '16:9'.",
       responseMimeType: "application/json",
       responseSchema: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          designPlan: { type: SchemaType.OBJECT, properties: { subject: {type: SchemaType.STRING}, styleContext: {type: SchemaType.STRING}, composition: {type: SchemaType.STRING}, colorLighting: {type: SchemaType.STRING}, decorElements: {type: SchemaType.STRING}, typography: {type: SchemaType.STRING} }, required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] },
-          layout_suggestion: { type: SchemaType.OBJECT, properties: { canvas_ratio: {type: SchemaType.STRING}, elements: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: { id: {type: SchemaType.STRING}, name: {type: SchemaType.STRING}, type: {type: SchemaType.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: SchemaType.STRING}, rect: { type: SchemaType.OBJECT, properties: { x: {type: SchemaType.NUMBER}, y: {type: SchemaType.NUMBER}, width: {type: SchemaType.NUMBER}, height: {type: SchemaType.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
-          analysis: { type: SchemaType.STRING },
-          final_prompt: { type: SchemaType.STRING },
-          recommendedAspectRatio: { type: SchemaType.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
+          designPlan: { type: Type.OBJECT, properties: { subject: {type: Type.STRING}, styleContext: {type: Type.STRING}, composition: {type: Type.STRING}, colorLighting: {type: Type.STRING}, decorElements: {type: Type.STRING}, typography: {type: Type.STRING} }, required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] },
+          layout_suggestion: { type: Type.OBJECT, properties: { canvas_ratio: {type: Type.STRING}, elements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
+          analysis: { type: Type.STRING },
+          final_prompt: { type: Type.STRING },
+          recommendedAspectRatio: { type: Type.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
         },
         required: ["designPlan", "layout_suggestion", "analysis", "final_prompt", "recommendedAspectRatio"],
       },
     },
   });
 
-  const result = JSON.parse(response.response.text()) as ArtDirectionResponse;
+  // Use response.text accessor
+  const text = response.text;
+  if (!text) throw new Error("No response text");
+  const result = JSON.parse(text) as ArtDirectionResponse;
   result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
   return result;
 };
@@ -174,7 +175,7 @@ export const generateDesignImage = async (
   logoImage: string | null = null,
   layoutMask?: string | null 
 ): Promise<string[]> => {
-  const genAI = getGeminiClient();
+  const ai = getGeminiClient();
   const parts: any[] = [{ text: `${prompt}\n\nSTRICT NEGATIVE PROMPT: ${NEGATIVE_PROMPT}\n\nTARGET ASPECT RATIO: ${aspectRatio}` }];
 
   if (layoutMask) {
@@ -201,25 +202,27 @@ export const generateDesignImage = async (
     }
   });
   
-  // Use the image preview model (this requires whitelisted access or Vertex usually, but keeping as user requested)
-  // For standard SDK, we inject aspectRatio into the text prompt or config if supported.
-  const model = genAI.getGenerativeModel({ model: MODEL_IMAGE_GEN });
-
   const promises = Array.from({ length: batchSize }).map(async () => {
-    // Cast config to any to bypass strict typing if standard SDK misses imageConfig properties
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts }],
-      generationConfig: {
-         // @ts-ignore - Some experimental params might not be in standard types
+    const result = await ai.models.generateContent({
+      model: MODEL_IMAGE_GEN,
+      contents: { parts },
+      config: {
+         // Cast to any because imageConfig might be experimental in types
+         // @ts-ignore
          imageConfig: { aspectRatio: aspectRatio, imageSize: imageSize }
-      } as any 
+      } 
     });
     
-    // In standard SDK, images usually come in candidates[0].content.parts
-    // but structure might vary for experimental models.
-    // We check for inlineData in parts.
-    const part = result.response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-    return part?.inlineData?.data ? `data:image/png;base64,${part.inlineData.data}` : null;
+    // In new SDK, we need to find image part. 
+    // Usually response.candidates[0].content.parts.
+    if (result.candidates && result.candidates[0].content.parts) {
+        for (const part of result.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+    }
+    return null;
   });
 
   const results = await Promise.all(promises);
@@ -232,26 +235,25 @@ export const refineDesignImage = async (
   aspectRatio: string,
   imageSize: string
 ): Promise<string[]> => {
-  const genAI = getGeminiClient();
+  const ai = getGeminiClient();
   const data = safeExtractBase64(sourceImageBase64);
   if (!data) throw new Error("Ảnh không hợp lệ");
 
-  const model = genAI.getGenerativeModel({ model: MODEL_IMAGE_GEN });
-
-  const response = await model.generateContent({
-    contents: [{ role: "user", parts: [
+  const response = await ai.models.generateContent({
+    model: MODEL_IMAGE_GEN,
+    contents: { parts: [
         { inlineData: { mimeType: "image/png", data: data } },
         { text: instruction + `\nASPECT RATIO: ${aspectRatio}` },
-    ]}],
-    generationConfig: {
+    ]},
+    config: {
       // @ts-ignore
       imageConfig: { aspectRatio: aspectRatio, imageSize: imageSize },
-    } as any,
+    },
   });
 
   const urls: string[] = [];
-  if (response.response.candidates?.[0]?.content?.parts) {
-    for (const part of response.response.candidates[0].content.parts) {
+  if (response.candidates && response.candidates[0].content.parts) {
+    for (const part of response.candidates[0].content.parts) {
       if (part.inlineData?.data) {
         urls.push(`data:image/png;base64,${part.inlineData.data}`);
       }
@@ -261,43 +263,41 @@ export const refineDesignImage = async (
 };
 
 export const upscaleImageTo4K = async (sourceImageBase64: string, aspectRatio: string): Promise<string> => {
-    const genAI = getGeminiClient();
+    const ai = getGeminiClient();
     const data = safeExtractBase64(sourceImageBase64);
     if (!data) throw new Error("Ảnh không hợp lệ");
 
-    const model = genAI.getGenerativeModel({ model: MODEL_IMAGE_GEN });
-
-    const response = await model.generateContent({
-        contents: [{ role: "user", parts: [
+    const response = await ai.models.generateContent({
+        model: MODEL_IMAGE_GEN,
+        contents: { parts: [
             { text: "GENERATE 4K ULTRA HIGH RESOLUTION VERSION. MAXIMIZE SHARPNESS AND DETAIL FOR PRINTING." },
             { inlineData: { mimeType: "image/png", data } }
-        ]}],
-        generationConfig: {
+        ]},
+        config: {
             // @ts-ignore
             imageConfig: { aspectRatio: aspectRatio, imageSize: "4K" }
-        } as any,
+        },
     });
-    const part = response.response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
     if (part?.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     throw new Error("Nâng cấp thất bại");
 };
 
 export const removeObjectWithMask = async (originalImageBase64: string, maskImageBase64: string, textInstruction?: string): Promise<string | null> => {
-    const genAI = getGeminiClient();
+    const ai = getGeminiClient();
     const originalData = safeExtractBase64(originalImageBase64);
     const maskData = safeExtractBase64(maskImageBase64);
     if (!originalData || !maskData) throw new Error("Dữ liệu không hợp lệ");
 
-    const model = genAI.getGenerativeModel({ model: MODEL_IMAGE_GEN });
-
-    const response = await model.generateContent({
-        contents: [{ role: "user", parts: [
+    const response = await ai.models.generateContent({
+        model: MODEL_IMAGE_GEN,
+        contents: { parts: [
             { text: `AI Eraser Tool: ${textInstruction || 'Seamlessly remove the object covered by the white mask and reconstruct the background'}` },
             { inlineData: { mimeType: "image/png", data: originalData } },
             { inlineData: { mimeType: "image/png", data: maskData } }
-        ]}]
+        ]}
     });
-    const part = response.response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
     return part?.inlineData ? `data:image/png;base64,${part.inlineData.data}` : null;
 };
 
@@ -306,7 +306,7 @@ export const separateDesignLayers = async (
   aspectRatio: string,
   imageSize: string
 ): Promise<SeparatedAssets> => {
-  const genAI = getGeminiClient();
+  const ai = getGeminiClient();
   const data = safeExtractBase64(sourceImageBase64);
   if (!data) throw new Error("Ảnh không hợp lệ");
 
@@ -326,20 +326,19 @@ export const separateDesignLayers = async (
     { mode: 'text_logo', prompt: "EXTRACT ONLY THE TYPOGRAPHY, TEXT, AND LOGOS. PLACE THEM ON A SOLID PURE WHITE (#FFFFFF) BACKGROUND." }
   ];
 
-  const model = genAI.getGenerativeModel({ model: MODEL_IMAGE_GEN });
-
   const promises = tasks.map(async (task) => {
-    const response = await model.generateContent({
-      contents: [{ role: "user", parts: [
+    const response = await ai.models.generateContent({
+      model: MODEL_IMAGE_GEN,
+      contents: { parts: [
           { text: task.prompt },
           { inlineData: { mimeType: "image/png", data } }
-      ]}],
-      generationConfig: {
+      ]},
+      config: {
          // @ts-ignore
          imageConfig: { aspectRatio: aspectRatio, imageSize: imageSize }
-      } as any,
+      },
     });
-    const part = response.response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
     return { mode: task.mode, data: part?.inlineData ? `data:image/png;base64,${part.inlineData.data}` : null };
   });
 
@@ -367,36 +366,35 @@ export const regeneratePromptFromPlan = async (
     _currentAspectRatio: string,
     currentLayout: LayoutSuggestion | null 
 ): Promise<ArtDirectionResponse> => {
-    const genAI = getGeminiClient();
+    const ai = getGeminiClient();
     
-    const finalModelId = originalRequest.analysisModel === AnalysisModel.PRO ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
+    const finalModelId = originalRequest.analysisModel === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
     
     const prompt = `Synthesize a high-quality creative prompt based on this updated plan: ${JSON.stringify(updatedPlan)}`;
 
-    const model = genAI.getGenerativeModel({ 
+    const response = await ai.models.generateContent({
         model: finalModelId,
-        systemInstruction: "Senior Art Director. Output JSON. RECOMMENDED ASPECT RATIO MUST BE ONE OF: '1:1', '3:4', '4:3', '9:16', '16:9'."
-    });
-
-    const response = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
+        contents: { parts: [{ text: prompt }] },
+        config: {
+            systemInstruction: "Senior Art Director. Output JSON. RECOMMENDED ASPECT RATIO MUST BE ONE OF: '1:1', '3:4', '4:3', '9:16', '16:9'.",
             responseMimeType: "application/json",
             responseSchema: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                    designPlan: { type: SchemaType.OBJECT, properties: { subject: {type: SchemaType.STRING}, styleContext: {type: SchemaType.STRING}, composition: {type: SchemaType.STRING}, colorLighting: {type: SchemaType.STRING}, decorElements: {type: SchemaType.STRING}, typography: {type: SchemaType.STRING} }, required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] },
-                    layout_suggestion: { type: SchemaType.OBJECT, properties: { canvas_ratio: {type: SchemaType.STRING}, elements: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: { id: {type: SchemaType.STRING}, name: {type: SchemaType.STRING}, type: {type: SchemaType.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: SchemaType.STRING}, rect: { type: SchemaType.OBJECT, properties: { x: {type: SchemaType.NUMBER}, y: {type: SchemaType.NUMBER}, width: {type: SchemaType.NUMBER}, height: {type: SchemaType.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
-                    analysis: { type: SchemaType.STRING },
-                    final_prompt: { type: SchemaType.STRING },
-                    recommendedAspectRatio: { type: SchemaType.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
+                    designPlan: { type: Type.OBJECT, properties: { subject: {type: Type.STRING}, styleContext: {type: Type.STRING}, composition: {type: Type.STRING}, colorLighting: {type: Type.STRING}, decorElements: {type: Type.STRING}, typography: {type: Type.STRING} }, required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] },
+                    layout_suggestion: { type: Type.OBJECT, properties: { canvas_ratio: {type: Type.STRING}, elements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
+                    analysis: { type: Type.STRING },
+                    final_prompt: { type: Type.STRING },
+                    recommendedAspectRatio: { type: Type.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
                 },
                 required: ["designPlan", "layout_suggestion", "analysis", "final_prompt", "recommendedAspectRatio"],
             },
         },
     });
 
-    const result = JSON.parse(response.response.text()) as ArtDirectionResponse;
+    const text = response.text;
+    if (!text) throw new Error("No response text");
+    const result = JSON.parse(text) as ArtDirectionResponse;
     result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
     return result;
 };
