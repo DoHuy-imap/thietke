@@ -21,29 +21,46 @@ const LoginScreen: React.FC = () => {
   const [name, setName] = useState('');
   const [isKeySelected, setIsKeySelected] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const initKeyStatus = async () => {
+    const status = await checkApiKeyStatus();
+    setIsKeySelected(status);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const init = async () => {
-      const status = await checkApiKeyStatus();
-      setIsKeySelected(status);
-      setLoading(false);
-    };
-    init();
+    initKeyStatus();
   }, []);
 
   const handleConnectKey = async () => {
-    await requestApiKey();
-    // Giả định thành công ngay sau khi click theo rules của AI Studio
-    setIsKeySelected(true);
-  };
-
-  const handleStart = () => {
-    if (name.trim() && isKeySelected) {
-      login(name.trim());
+    try {
+      await requestApiKey();
+      // Rules: assume key selection success after trigger
+      setIsKeySelected(true);
+      setError(null);
+    } catch (e) {
+      setError("Không thể mở trình chọn API Key. Vui lòng kiểm tra lại môi trường trình duyệt.");
     }
   };
 
-  if (loading) return null;
+  const handleStart = () => {
+    if (!name.trim()) {
+      setError("Vui lòng nhập tên nhà thiết kế.");
+      return;
+    }
+    if (!isKeySelected) {
+      setError("Bạn cần kết nối API Key để sử dụng các tính năng AI.");
+      return;
+    }
+    login(name.trim());
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#020617] flex items-center justify-center">
+      <div className="w-10 h-10 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden">
@@ -60,6 +77,12 @@ const LoginScreen: React.FC = () => {
         </div>
 
         <div className="space-y-8">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-2xl text-red-400 text-xs font-bold text-center animate-shake">
+              {error}
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-4">Nhà thiết kế (Display Name)</label>
             <div className="relative group">
@@ -72,7 +95,10 @@ const LoginScreen: React.FC = () => {
                 type="text" 
                 placeholder="Nhập tên hiển thị của bạn..."
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (error) setError(null);
+                }}
                 className="w-full bg-slate-950/60 border border-white/5 rounded-3xl pl-14 pr-6 py-5 text-white font-bold focus:ring-2 focus:ring-[#FFD300]/50 outline-none transition-all placeholder-slate-700 text-sm"
               />
             </div>
@@ -84,43 +110,36 @@ const LoginScreen: React.FC = () => {
               <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[8px] text-blue-400 font-bold hover:text-blue-300">Google Billing</a>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div 
-                onClick={handleConnectKey}
-                className={`cursor-pointer p-5 rounded-[2rem] border transition-all flex flex-col gap-3 relative overflow-hidden group
-                  ${isKeySelected ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-slate-950/40 border-white/5 hover:border-white/20'}`}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-black text-white uppercase tracking-tighter">Gemini Brain</p>
-                  <div className={`w-2 h-2 rounded-full ${isKeySelected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-red-500'}`}></div>
+            <div 
+              onClick={handleConnectKey}
+              className={`cursor-pointer p-6 rounded-[2.5rem] border transition-all flex flex-col gap-3 relative overflow-hidden group
+                ${isKeySelected ? 'bg-emerald-500/10 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'bg-slate-950/40 border-white/5 hover:border-[#FFD300]/30 hover:bg-slate-900/60'}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-xl ${isKeySelected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </div>
+                  <p className="text-[11px] font-black text-white uppercase tracking-tighter">Kết nối Google Gemini API</p>
                 </div>
-                <p className="text-[11px] font-mono text-slate-500">
-                   {isKeySelected ? 'sk-••••CONNECTED' : 'no-key-selected'}
-                </p>
+                <div className={`w-2.5 h-2.5 rounded-full ${isKeySelected ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]' : 'bg-red-500 animate-pulse'}`}></div>
               </div>
-
-              <div 
-                onClick={handleConnectKey}
-                className={`cursor-pointer p-5 rounded-[2rem] border transition-all flex flex-col gap-3 relative overflow-hidden group
-                  ${isKeySelected ? 'bg-blue-500/5 border-blue-500/30' : 'bg-slate-950/40 border-white/5 hover:border-white/20'}`}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-black text-white uppercase tracking-tighter">Image Engine</p>
-                  <div className={`w-2 h-2 rounded-full ${isKeySelected ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' : 'bg-red-500'}`}></div>
-                </div>
-                <p className="text-[11px] font-mono text-slate-500">
-                   {isKeySelected ? 'sk-••••CONNECTED' : 'no-key-selected'}
-                </p>
-              </div>
+              <p className="text-[10px] font-bold text-slate-500 leading-relaxed px-1">
+                {isKeySelected ? 'Trạng thái: Đã kết nối với Studio Key' : 'Yêu cầu: Nhấn để chọn Key từ dự án Paid để bắt đầu.'}
+              </p>
             </div>
           </div>
 
           <button 
             onClick={handleStart}
-            disabled={!name.trim() || !isKeySelected}
-            className="w-full py-6 bg-[#FFD300] hover:bg-[#FFC000] text-black font-black rounded-3xl shadow-2xl shadow-[#FFD300]/20 uppercase tracking-[0.3em] disabled:opacity-20 disabled:grayscale transition-all active:scale-95 text-sm mt-4 border-t border-white/40"
+            className="w-full py-6 bg-[#FFD300] hover:bg-[#FFC000] text-black font-black rounded-3xl shadow-2xl shadow-[#FFD300]/20 uppercase tracking-[0.3em] active:scale-95 transition-all text-sm mt-4 border-t border-white/40 flex items-center justify-center gap-3"
           >
             Bắt đầu Sáng tạo
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
           </button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 
 // @google/genai guidelines: Use process.env.API_KEY and correct model names.
 import { GoogleGenAI, Type } from "@google/genai";
-import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, DesignPlan, LayoutSuggestion, AnalysisModel } from "../types";
+import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, DesignPlan, LayoutSuggestion, AnalysisModel, SeparatedAssets } from "../types";
 
 // --- HYBRID MODEL STRATEGY CONFIGURATION ---
 const MODEL_IMAGE_GEN = "gemini-3-pro-image-preview"; 
@@ -89,6 +89,17 @@ const RESPONSE_SCHEMA = {
 const getAnalysisModelId = (model: AnalysisModel) => model === AnalysisModel.PRO ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
 /**
+ * Helper to ensure API Key is available
+ */
+const ensureApiKey = () => {
+  const key = process.env.API_KEY;
+  if (!key || key.trim() === "") {
+    throw new Error("API Key chưa được thiết lập. Vui lòng kết nối API Key trong màn hình Đăng nhập hoặc Cài đặt.");
+  }
+  return key;
+};
+
+/**
  * Utility to extract base64 data from a data URL string safely
  */
 const safeExtractBase64 = (dataUrl: string | null): string | null => {
@@ -97,9 +108,18 @@ const safeExtractBase64 = (dataUrl: string | null): string | null => {
   return parts.length > 1 ? parts[1] : null;
 };
 
+// Fix: Implement missing convertLayoutToPrompt function for spatial layout instructions
+export const convertLayoutToPrompt = (layout: LayoutSuggestion): string => {
+  const elementsDesc = layout.elements.map(el => 
+    `- ${el.name} (${el.type}): x=${el.rect.x.toFixed(1)}%, y=${el.rect.y.toFixed(1)}%, width=${el.rect.width.toFixed(1)}%, height=${el.rect.height.toFixed(1)}%`
+  ).join('\n');
+  
+  return `\n\n### LAYOUT ###\nUse the following spatial composition as a guide (do not render the coordinates themselves):\n${elementsDesc}`;
+};
+
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
-  // CRITICAL: Always create new instance right before the call to pick up the updated API KEY
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = ensureApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const modelId = getAnalysisModelId(request.analysisModel);
 
   try {
@@ -161,7 +181,6 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
         }
     });
 
-    console.log(`[GeminiService] Calling model ${modelId} for art direction...`);
     const response = await ai.models.generateContent({
       model: modelId,
       contents: { parts },
@@ -173,7 +192,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     });
 
     const text = response.text;
-    if (!text) throw new Error("AI Director returned an empty response. Please try again.");
+    if (!text) throw new Error("AI Director returned an empty response.");
     
     try {
       const result = JSON.parse(text) as ArtDirectionResponse;
@@ -185,28 +204,14 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
       result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
       return result;
     } catch (parseError) {
-      console.error("[GeminiService] JSON Parse Error:", text);
-      throw new Error("Không thể xử lý kết quả từ AI (JSON Parse Error). Vui lòng thử lại.");
+      throw new Error("Không thể xử lý kết quả từ AI (JSON Parse Error).");
     }
   } catch (error: any) {
-    console.error("[GeminiService] Art Direction Error:", error);
+    if (error.message?.includes("Requested entity was not found")) {
+      throw new Error("Lỗi xác thực API Key. Vui lòng thử chọn lại API Key trong AI Studio.");
+    }
     throw error;
   }
-};
-
-export const convertLayoutToPrompt = (layout: LayoutSuggestion): string => {
-    if (!layout || !layout.elements || layout.elements.length === 0) return "";
-    
-    let promptAddition = "\n\n### SPATIAL GUIDANCE (INVISIBLE MASK) ###\n";
-    promptAddition += "An invisible LAYOUT_MASK is attached. Follow these color regions for placement:\n";
-    
-    layout.elements.forEach((el) => {
-        const colorName = el.color.toUpperCase();
-        promptAddition += `- The ${colorName} area represents the ${el.type.toUpperCase()} element ("${el.name}").\n`;
-    });
-    
-    promptAddition += "\n⛔ IMPORTANT: DO NOT render any boxes, text coordinates, or the colors themselves. Use them only as spatial boundaries.";
-    return promptAddition;
 };
 
 export const regeneratePromptFromPlan = async (
@@ -215,8 +220,8 @@ export const regeneratePromptFromPlan = async (
     _currentAspectRatio: string,
     currentLayout: LayoutSuggestion | null 
 ): Promise<ArtDirectionResponse> => {
-    // CRITICAL: Always create new instance
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = ensureApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const modelId = getAnalysisModelId(originalRequest.analysisModel);
 
     try {
@@ -224,7 +229,6 @@ export const regeneratePromptFromPlan = async (
             REFINE DESIGN PROMPT.
             PLAN DETAILS: ${JSON.stringify(updatedPlan)}
             LAYOUT COLOR MAPPING: ${currentLayout ? currentLayout.elements.map(e => `${e.color} -> ${e.name}`).join(', ') : 'N/A'}
-            
             Synthesize into a professional English prompt. 
             ⛔ STRICT RULE: DO NOT include X/Y coordinates or numeric positions.
         `;
@@ -245,7 +249,6 @@ export const regeneratePromptFromPlan = async (
         result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
         return result;
     } catch (error) {
-        console.error("Error regenerating prompt from plan:", error);
         throw error;
     }
 };
@@ -259,19 +262,15 @@ export const generateDesignImage = async (
   logoImage: string | null = null,
   layoutMask?: string | null 
 ): Promise<string[]> => {
+  const apiKey = ensureApiKey();
+  const ai = new GoogleGenAI({ apiKey });
+  
   try {
     const fullPrompt = `${prompt}\n\nSTRICT NEGATIVE CONSTRAINTS: ${NEGATIVE_PROMPT}`;
     const parts: any[] = [{ text: fullPrompt }];
 
     if (layoutMask) {
-        parts.push({ text: `
-        [LAYOUT_MASK INSTRUCTION]
-        The following image is a SEMANTIC SEGMENTATION MASK. 
-        It defines the EXACT SPATIAL BOUNDARIES for elements.
-        - Treat color blocks as placeholders for the content described in the prompt.
-        - ⛔ DO NOT DRAW THE MASK ITSELF.
-        - ⛔ DO NOT DRAW COORDINATES, TEXT LABELS, OR BOXES SEEN IN THE MASK.
-        ` });
+        parts.push({ text: `[LAYOUT_MASK INSTRUCTION] Semantic segmentation mask attached.` });
         const maskData = safeExtractBase64(layoutMask);
         if (maskData) parts.push({ inlineData: { mimeType: "image/png", data: maskData } });
     }
@@ -293,12 +292,10 @@ export const generateDesignImage = async (
     }
     
     const promises = Array.from({ length: batchSize }).map(async () => {
-      // CRITICAL: Always create new instance right before making an API call
-      const aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await aiInstance.models.generateContent({
+      const response = await ai.models.generateContent({
         model: MODEL_IMAGE_GEN,
         contents: { parts },
-        config: { imageConfig: { aspectRatio: aspectRatio, imageSize: imageSize } },
+        config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: imageSize as any } },
       });
 
       for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -310,17 +307,16 @@ export const generateDesignImage = async (
     const results = await Promise.all(promises);
     return results.filter((url): url is string => url !== null);
   } catch (error) {
-    console.error("Error generating image:", error);
     throw error;
   }
 };
 
 export const refineDesignImage = async (sourceImageBase64: string, instruction: string, aspectRatio: string, imageSize: string): Promise<string[]> => {
-  // CRITICAL: Always create new instance
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = ensureApiKey();
+  const ai = new GoogleGenAI({ apiKey });
 
   try {
-    const prompt = `Edit instruction: ${instruction}. Keep layout consistent. No technical numbers.`;
+    const prompt = `Edit instruction: ${instruction}. Keep layout consistent.`;
     const data = safeExtractBase64(sourceImageBase64);
     if (!data) throw new Error("Invalid source image");
 
@@ -332,7 +328,7 @@ export const refineDesignImage = async (sourceImageBase64: string, instruction: 
           { inlineData: { mimeType: "image/png", data } }
         ]
       },
-      config: { imageConfig: { aspectRatio, imageSize } },
+      config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: imageSize as any } },
     });
     const urls: string[] = [];
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -340,17 +336,16 @@ export const refineDesignImage = async (sourceImageBase64: string, instruction: 
     }
     return urls;
   } catch (error) {
-    console.error("Error refining image:", error);
     throw error;
   }
 };
 
 export const upscaleImageTo4K = async (sourceImageBase64: string, aspectRatio: string): Promise<string> => {
-    // CRITICAL: Always create new instance
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = ensureApiKey();
+    const ai = new GoogleGenAI({ apiKey });
 
     try {
-        const prompt = "UPSCALER: Generate 4K version. Sharpen details, PRESERVE original content and colors exactly. NO NEW ELEMENTS.";
+        const prompt = "UPSCALER: Generate 4K version. Sharpen details.";
         const data = safeExtractBase64(sourceImageBase64);
         if (!data) throw new Error("Invalid source image");
 
@@ -362,90 +357,24 @@ export const upscaleImageTo4K = async (sourceImageBase64: string, aspectRatio: s
                     { inlineData: { mimeType: "image/png", data } }
                 ]
             },
-            config: { imageConfig: { aspectRatio: aspectRatio, imageSize: "4K" } },
+            config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: "4K" } },
         });
         for (const part of response.candidates?.[0]?.content?.parts || []) {
             if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
         }
-        throw new Error("No image generated from upscale request");
+        throw new Error("Upscale failed");
     } catch (error) {
-        console.error("Error upscaling image:", error);
         throw error;
     }
 };
 
-export const separateDesignComponents = async (
-    originalPrompt: string, 
-    aspectRatio: string, 
-    _userImageSize: string, 
-    referenceImageBase64?: string,
-    mode: 'full' | 'background' = 'full'
-): Promise<{ background: string | null, textLayer: string | null, subjects: string[], decor: string[], lighting: string | null }> => {
-  // CRITICAL: Always create new instance
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const MAX_QUALITY_SIZE = "4K"; 
-
-  const buildParts = (taskPrompt: string) => {
-    const parts: any[] = [{ text: taskPrompt }];
-    const data = safeExtractBase64(referenceImageBase64 || null);
-    if (data) parts.push({ inlineData: { mimeType: "image/png", data } });
-    return parts;
-  };
-
-  const extractImage = (response: any) => {
-       for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-      }
-      return null;
-  };
-
-  try {
-      const bgInstruction = mode === 'background' 
-         ? `Based on reference: GENERATE A HIGH-FIDELITY COPY of the image but REMOVE ALL TEXT, HEADLINES, and LOGOS. Keep subject and background.`
-         : `Based on reference: GENERATE BACKGROUND ONLY. High Res.`;
-
-      const bgRes = await ai.models.generateContent({ 
-          model: MODEL_IMAGE_GEN,
-          contents: { parts: buildParts(bgInstruction) }, 
-          config: { imageConfig: { aspectRatio, imageSize: MAX_QUALITY_SIZE } } 
-      });
-
-      const background = extractImage(bgRes);
-      if (mode === 'background') return { background, textLayer: null, subjects: [], decor: [], lighting: null };
-
-      const textPrompt = `Based on reference: TYPOGRAPHY LAYER ONLY on WHITE background.`;
-      const subjectMainPrompt = `Based on reference: MAIN HERO SUBJECT on WHITE background.`;
-      const subjectSecPrompt = `Based on reference: SECONDARY SUBJECTS on WHITE background.`;
-      const decorPrompt = `Based on reference: PROPS/DECOR on WHITE background.`;
-      const lightPrompt = `Based on reference: LIGHTING/ATMOSPHERE on BLACK background.`;
-
-      const [textRes, subMainRes, subSecRes, decorRes, lightRes] = await Promise.all([
-        ai.models.generateContent({ model: MODEL_IMAGE_GEN, contents: { parts: buildParts(textPrompt) }, config: { imageConfig: { aspectRatio, imageSize: MAX_QUALITY_SIZE } } }),
-        ai.models.generateContent({ model: MODEL_IMAGE_GEN, contents: { parts: buildParts(subjectMainPrompt) }, config: { imageConfig: { aspectRatio, imageSize: MAX_QUALITY_SIZE } } }),
-        ai.models.generateContent({ model: MODEL_IMAGE_GEN, contents: { parts: buildParts(subjectSecPrompt) }, config: { imageConfig: { aspectRatio, imageSize: MAX_QUALITY_SIZE } } }),
-        ai.models.generateContent({ model: MODEL_IMAGE_GEN, contents: { parts: buildParts(decorPrompt) }, config: { imageConfig: { aspectRatio, imageSize: MAX_QUALITY_SIZE } } }),
-        ai.models.generateContent({ model: MODEL_IMAGE_GEN, contents: { parts: buildParts(lightPrompt) }, config: { imageConfig: { aspectRatio, imageSize: MAX_QUALITY_SIZE } } })
-      ]);
-
-      const subjects = [extractImage(subMainRes), extractImage(subSecRes)].filter(Boolean) as string[];
-      return { 
-          background, textLayer: extractImage(textRes), subjects,
-          decor: [extractImage(decorRes)].filter(Boolean) as string[],
-          lighting: extractImage(lightRes)
-      };
-  } catch (error) {
-    console.error("Error separating components:", error);
-    throw error;
-  }
-};
-
 export const removeObjectWithMask = async (originalImageBase64: string, maskImageBase64: string, textInstruction?: string): Promise<string | null> => {
-    // CRITICAL: Always create new instance
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = ensureApiKey();
+    const ai = new GoogleGenAI({ apiKey });
 
     try {
         const removalContext = textInstruction ? `Specifically remove: "${textInstruction}".` : "Remove the highlighted object.";
-        const prompt = `Inpaint task: ${removalContext} Blend the background perfectly with original texture. NO ARTIFACTS, NO BLUR.`;
+        const prompt = `Inpaint task: ${removalContext}`;
         
         const originalData = safeExtractBase64(originalImageBase64);
         const maskData = safeExtractBase64(maskImageBase64);
@@ -466,41 +395,54 @@ export const removeObjectWithMask = async (originalImageBase64: string, maskImag
         }
         return null;
     } catch (error) {
-        console.error("Error removing object with mask:", error);
         throw error;
     }
 };
 
-export const updatePlanFromLayout = async (currentPlan: DesignPlan, newLayout: LayoutSuggestion): Promise<DesignPlan> => {
-    // CRITICAL: Always create new instance
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Fix: Implement missing separateDesignComponents function for background removal/extraction
+export const separateDesignComponents = async (
+  _prompt: string,
+  aspectRatio: string,
+  imageSize: string,
+  sourceImageBase64: string,
+  mode: 'full' | 'background'
+): Promise<Partial<SeparatedAssets>> => {
+  const apiKey = ensureApiKey();
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const data = safeExtractBase64(sourceImageBase64);
+  if (!data) throw new Error("Invalid source image");
 
-    try {
-        const prompt = `Update the design plan keywords based on this new layout positioning. Plan: ${JSON.stringify(currentPlan)}. Layout: ${JSON.stringify(newLayout)}. DO NOT USE NUMBERS.`;
-        const PLAN_SCHEMA = {
-            type: Type.OBJECT,
-            properties: {
-                subject: { type: Type.STRING },
-                styleContext: { type: Type.STRING },
-                composition: { type: Type.STRING },
-                colorLighting: { type: Type.STRING },
-                decorElements: { type: Type.STRING },
-                typography: { type: Type.STRING }
-            },
-            required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"]
-        };
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: { parts: [{ text: prompt }] },
-            config: {
-                systemInstruction: "You are a senior design consultant. Update descriptions to reflect spatial changes without mentioning coordinates.",
-                responseMimeType: "application/json",
-                responseSchema: PLAN_SCHEMA,
-            },
-        });
-        return JSON.parse(response.text) as DesignPlan;
-    } catch (error) {
-        console.error("Error updating plan from layout:", error);
-        throw error;
+  const instruction = mode === 'background' 
+    ? "Remove all subjects, logos, and text. Keep only the background scenery and atmosphere."
+    : "Extract the main subjects and elements, remove the background.";
+
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_IMAGE_GEN,
+      contents: {
+        parts: [
+          { text: instruction },
+          { inlineData: { mimeType: "image/png", data } }
+        ]
+      },
+      config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: imageSize as any } },
+    });
+
+    let resultImage: string | null = null;
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        resultImage = `data:image/png;base64,${part.inlineData.data}`;
+        break;
+      }
     }
+
+    if (mode === 'background') {
+      return { background: resultImage };
+    } else {
+      return { subjects: resultImage ? [resultImage] : [] };
+    }
+  } catch (error) {
+    throw error;
+  }
 };
