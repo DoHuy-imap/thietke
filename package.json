@@ -6,7 +6,6 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@google/genai": "^0.0.2",
     "@google/generative-ai": "^0.21.0",
     "dexie": "^4.0.1",
     "@monaco-editor/react": "^4.6.0"
