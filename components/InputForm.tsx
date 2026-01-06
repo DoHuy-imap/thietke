@@ -1,5 +1,5 @@
 
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState } from 'react';
 import { ArtDirectionRequest, ProductType, VisualStyle, ColorMode, QualityLevel, ProductImageMode, ReferenceImageConfig, AnalysisModel } from '../types';
 
 interface InputFormProps {
@@ -7,9 +7,10 @@ interface InputFormProps {
   onChange: (field: keyof ArtDirectionRequest, value: any) => void;
   onSubmit: () => void;
   isGenerating: boolean;
+  estimatedCost?: number; // New prop for cost display
 }
 
-const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, isGenerating }) => {
+const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, isGenerating, estimatedCost = 0 }) => {
   const assetInputRef = useRef<HTMLInputElement>(null);
   const headlineImageInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -93,7 +94,7 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, isGen
 
     if (field === 'assetImages') {
       const newImages: string[] = [...values.assetImages];
-      Array.from(files).forEach(file => {
+      Array.from(files).forEach((file: File) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           if (reader.result) newImages.push(reader.result as string);
@@ -101,7 +102,7 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, isGen
              onChange('assetImages', newImages);
           }
         };
-        reader.readAsDataURL(file as Blob);
+        reader.readAsDataURL(file);
       });
     } else {
       const file = files[0];
@@ -188,6 +189,10 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, isGen
         const newColors = values.customColors.filter((_, i) => i !== index);
         onChange('customColors', newColors);
     }
+  };
+
+  const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
   return (
@@ -681,6 +686,13 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, isGen
                     <span className="text-[9px] text-orange-400 font-mono tracking-tighter">~500 VNĐ / 1k tokens</span>
                  </button>
              </div>
+        </div>
+        
+        <div className="mb-4 flex items-center justify-between px-2 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+             <span className="text-[10px] text-slate-400 font-bold uppercase">Chi phí ước tính:</span>
+             <span className="text-sm text-emerald-400 font-mono font-black tracking-tighter">
+                {formatCurrency(estimatedCost)}
+             </span>
         </div>
 
         <button

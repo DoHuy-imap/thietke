@@ -1,11 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
 import GalleryView from './components/GalleryView';
 import LoginScreen from './components/LoginScreen';
 import { ArtDirectionRequest, ArtDirectionResponse, ColorMode, ImageGenerationResult, ProductType, VisualStyle, QualityLevel, SeparatedAssets, ProductImageMode, DesignPlan, AnalysisModel } from './types';
-import { generateArtDirection, generateDesignImage, separateDesignComponents, refineDesignImage, regeneratePromptFromPlan, removeObjectWithMask } from './services/geminiService';
+import { generateArtDirection, generateDesignImage, separateDesignComponents, refineDesignImage, regeneratePromptFromPlan, removeObjectWithMask, estimateRequestCost } from './services/geminiService';
 import { saveDesignToHistory } from './services/historyDb';
 import { useAuth } from './contexts/UserContext';
 
@@ -67,6 +67,14 @@ const App: React.FC = () => {
     quality: QualityLevel.LOW,
     analysisModel: AnalysisModel.FLASH
   });
+
+  const [estimatedCost, setEstimatedCost] = useState(0);
+
+  // Update estimated cost whenever request changes
+  useEffect(() => {
+    const cost = estimateRequestCost(request);
+    setEstimatedCost(cost);
+  }, [request]);
 
   const [artDirection, setArtDirection] = useState<ArtDirectionResponse | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
@@ -146,6 +154,7 @@ const App: React.FC = () => {
 
   const handleSeparateLayout = async (selectedImage: string, mode: 'full' | 'background') => {
     if (!artDirection) return;
+    // Don't clear previous assets, just set loading
     setSeparatedAssets(prev => ({ ...prev, loading: true, error: null }));
     try {
       const result = await separateDesignComponents(
@@ -156,6 +165,20 @@ const App: React.FC = () => {
         mode
       );
       setSeparatedAssets({ ...result, loading: false, error: null });
+      
+      // Feature Upgrade: Add separated layers to Studio Output as well
+      const newLayers: string[] = [];
+      if (result.background) newLayers.push(result.background);
+      if (result.textLayer) newLayers.push(result.textLayer);
+      if (result.decor && result.decor.length > 0) newLayers.push(...result.decor);
+
+      if (newLayers.length > 0) {
+        setImageResult(prev => ({
+           ...prev,
+           imageUrls: [...newLayers, ...prev.imageUrls]
+        }));
+      }
+
     } catch (err: any) {
       setSeparatedAssets(prev => ({ ...prev, loading: false, error: (err as Error).message || "Lỗi khi tách nền." }));
     }
@@ -182,7 +205,12 @@ const App: React.FC = () => {
     try {
       const res = await removeObjectWithMask(sourceImage, maskBase64, textDescription);
       if (res) {
-        setRefinementResult(prev => ({ ...prev, imageUrls: [res, ...prev.imageUrls], loading: false, error: null }));
+        // Feature Upgrade: Result stored at Studio Output until new design
+        setImageResult(prev => ({
+           ...prev,
+           imageUrls: [res, ...prev.imageUrls], 
+        }));
+        setRefinementResult(prev => ({ ...prev, imageUrls: [res], loading: false, error: null }));
       } else {
         throw new Error("Không thể xử lý xóa vật thể.");
       }
@@ -307,7 +335,7 @@ const App: React.FC = () => {
            {activeTab === 'studio' ? (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
                   <div className="lg:col-span-4 h-full min-h-[500px]">
-                    <InputForm values={request} onChange={handleInputChange} onSubmit={handleAnalyze} isGenerating={isAnalyzing || imageResult.loading} />
+                    <InputForm values={request} onChange={handleInputChange} onSubmit={handleAnalyze} isGenerating={isAnalyzing || imageResult.loading} estimatedCost={estimatedCost} />
                   </div>
                   <div className="lg:col-span-8 h-full min-h-[500px]">
                     <ResultDisplay 
