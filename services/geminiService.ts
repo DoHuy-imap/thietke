@@ -9,8 +9,10 @@ import {
 const MODEL_PLANNING = "gemini-3-pro-preview";
 const MODEL_PRODUCTION = "gemini-3-pro-image-preview";
 
-const QUALITY_BOOSTERS = "professional commercial graphic design, advertising award winning style, high fidelity, vector quality sharp text, premium product photography lighting, 8k resolution, clean sharp edges";
-const NEGATIVE_PROMPT = "blurry, low quality, messy composition, distorted logo, text errors, watermark, signature, lowres, grainy, frame, slanted, perspective mockup, extra limbs, bad anatomy, noisy background";
+// Optimized Quality Boosters (Shorter but potent)
+const QUALITY_BOOSTERS = "commercial advertising design, award winning, high fidelity, sharp text, premium lighting, 8k, clean edges";
+// Optimized Negative Prompt
+const NEGATIVE_PROMPT = "blurry, low quality, distortion, text errors, watermark, lowres, grainy, bad anatomy, noisy";
 
 export const LAYOUT_TAG = "\n\n### DESIGN LAYOUT COORDINATES ###\n";
 
@@ -93,44 +95,39 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
   const ai = getGeminiClient();
   const targetRatio = getClosestAspectRatio(request.width, request.height);
   let colorInstr = request.colorOption === ColorOption.BRAND_LOGO 
-    ? "Analyze the Brand Logo colors and use them as the primary theme." 
-    : request.colorOption === ColorOption.CUSTOM ? `Strictly use HEX: ${request.customColors.join(', ')}.` : "AI Custom professional colors.";
+    ? "Use Brand Logo colors as primary." 
+    : request.colorOption === ColorOption.CUSTOM ? `HEX: ${request.customColors.join(', ')}.` : "AI Custom professional colors.";
 
-  // CMYK Instruction
+  // CMYK Instruction (Optimized)
   if (request.useCMYK) {
-      colorInstr += " [STRICT CMYK MODE: Use only printable colors strictly within the CMYK gamut suitable for offset printing. Avoid neon, fluorescent, or out-of-gamut RGB brights. Colors should appear rich, matte, and print-safe.]";
+      colorInstr += " [CMYK MODE: Use print-safe gamut. No RGB neon/fluorescents. Rich, matte finish.]";
   }
 
+  // OPTIMIZED TOKEN PROMPT
   const promptParts: any[] = [{ text: `
-    ROLE: EXPERT ART DIRECTOR.
-    TASK: ANALYZE REFERENCES AND CREATE A DETAILED DESIGN PLAN.
+    ROLE: EXPERT ART DIRECTOR. TASK: CREATE DETAILED DESIGN PLAN.
 
-    STRICT CONTENT RULES (DO NOT HALLUCINATE TEXT):
-    1. Primary Headline: "${request.mainHeadline}" (Must appear exactly as written).
-    2. Secondary Text: "${request.secondaryText}" (Must appear exactly as written).
-    3. Do NOT invent addresses, phone numbers, or slogans not provided above.
+    CONTENT (EXACT MATCH):
+    1. Headline: "${request.mainHeadline}"
+    2. Subtext: "${request.secondaryText}"
+    NO extra text.
 
-    INPUT SPECS:
-    - Product: ${request.productType} (Real Physical Size: ${request.width}cm x ${request.height}cm, Aspect Ratio: ${targetRatio})
-    - Strategy Directive: "${request.layoutRequirements}"
-    - Base Style: ${request.visualStyle}
+    SPECS:
+    - Type: ${request.productType} (${request.width}cm x ${request.height}cm, Ratio: ${targetRatio})
+    - Strategy: "${request.layoutRequirements}"
+    - Style: ${request.visualStyle}
     - Colors: ${colorInstr}
     
-    REFERENCE ANALYSIS LOGIC (STRICT 6-CRITERIA MAPPING):
-    Analyze all attached images. For each Reference Image, look at its assigned 'Attributes' and map them to the corresponding Design Plan key below:
-    
-    1. subject (Chủ thể & Nội dung): Derive from 'Subject' attribute. How is the product/model shown?
-    2. styleContext (Phong cách & Bối cảnh): Derive from 'Style' attribute. What is the mood/era/environment?
-    3. composition (Bố cục & Góc nhìn): Derive from 'Composition' attribute. How are elements arranged? (Prioritize user's 'Strategy Directive').
-    4. colorLighting (Màu sắc & Ánh sáng): Derive from 'Color' attribute. What is the palette and lighting scheme?
-    5. decorElements (Chi tiết trang trí): Derive from 'Decoration' attribute. What shapes, lines, or textures are used?
-    6. typography (Typography & Font): 
-       - PRIMARY SOURCE: The provided 'CRITICAL Typography Reference' image (if exists).
-       - SECONDARY SOURCE: Reference Ideas with 'Typo' attribute.
-       - Define font style, weight, and treatment strictly.
+    ANALYSIS (Map Refs):
+    1. subject (Content): From 'Subject' refs. Product presentation?
+    2. styleContext (Mood): From 'Style' refs. Env/Era?
+    3. composition (Layout): From 'Composition' refs. Arrangement?
+    4. colorLighting (Palette): From 'Color' refs. Light/Tone?
+    5. decorElements (Details): From 'Decoration' refs. Shapes/Textures?
+    6. typography (Font): From 'Typo' refs & attached image. Style/Weight?
 
     ASSET HANDLING:
-    - If Subject Assets are provided with 'AI background removal', explicitly plan to ISOLATE them from their original background and place them into the new 'styleContext'.
+    - 'AI background removal': Isolate subject, place in new context.
   ` }];
 
   // Resize images before sending to Analysis to prevent 400 errors here as well
@@ -138,7 +135,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     const resizedLogo = await resizeImageBase64(request.logoImage);
     const data = extractBase64AndMime(resizedLogo);
     if (data) {
-        promptParts.push({ text: "Brand Logo (Keep colors and shape):" });
+        promptParts.push({ text: "Brand Logo (Keep colors/shape):" });
         promptParts.push({ inlineData: data });
     }
   }
@@ -147,7 +144,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     const resizedTypo = await resizeImageBase64(request.typoReferenceImage);
     const data = extractBase64AndMime(resizedTypo);
     if (data) {
-        promptParts.push({ text: "CRITICAL Typography Reference (Follow this font style):" });
+        promptParts.push({ text: "CRITICAL Typo Ref (Follow style):" });
         promptParts.push({ inlineData: data });
     }
   }
@@ -158,7 +155,7 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
     const resizedRef = await resizeImageBase64(ref.image);
     const data = extractBase64AndMime(resizedRef);
     if (data) {
-        promptParts.push({ text: `Ref Idea ${idx+1} (Extract attributes: ${ref.attributes.join(', ')}):` });
+        promptParts.push({ text: `Ref ${idx+1} (Attrs: ${ref.attributes.join(', ')}):` });
         promptParts.push({ inlineData: data });
     }
   }
@@ -193,7 +190,7 @@ export const suggestNewLayout = async (direction: ArtDirectionResponse, request:
   const ai = getGeminiClient();
   const response = await ai.models.generateContent({
     model: MODEL_PLANNING,
-    contents: { parts: [{ text: `Analyze the Design Plan: ${JSON.stringify(direction.designPlan)} and the user's layout directive: "${request.layoutRequirements}". Suggest a completely NEW creative layout JSON. Ensure the layout fits the aspect ratio ${direction.recommendedAspectRatio}. Output ONLY the layout_suggestion object.` }] },
+    contents: { parts: [{ text: `Analyze Plan: ${JSON.stringify(direction.designPlan)} & directive: "${request.layoutRequirements}". Create NEW layout JSON. Ratio: ${direction.recommendedAspectRatio}. Output layout_suggestion only.` }] },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -210,10 +207,10 @@ export const suggestNewLayout = async (direction: ArtDirectionResponse, request:
 export const generateDesignImage = async (prompt: string, aspectRatio: string, batchSize: number, imageSize: string, _assets: SubjectAsset[] = [], _logo: string | null = null, mask?: string | null): Promise<string[]> => {
   const ai = getGeminiClient();
   
-  // Consolidate text into ONE part to prevent 400 errors.
-  let fullTextPrompt = `${prompt}. Professional commercial design quality. High-end advertising style.`;
-  if (mask) fullTextPrompt += " Follow the element positions in the provided layout mask exactly.";
-  if (_logo) fullTextPrompt += " Include the provided brand logo perfectly.";
+  // OPTIMIZED PRODUCTION PROMPT
+  let fullTextPrompt = `${prompt} commercial design, high-end style.`;
+  if (mask) fullTextPrompt += " Follow layout mask positions.";
+  if (_logo) fullTextPrompt += " Include brand logo.";
   
   const imageParts: any[] = [];
 
@@ -225,10 +222,9 @@ export const generateDesignImage = async (prompt: string, aspectRatio: string, b
     if (data) {
       imageParts.push({ inlineData: data });
       if (asset.removeBackground) {
-        // Strong instruction for background removal
-        fullTextPrompt += ` [IMPORTANT] For Asset ${idx + 1}, performing digital cutout. EXTRACT the subject from its original background and composite it seamlessly into the new design. Do NOT include the original background of the asset.`;
+        fullTextPrompt += ` Asset ${idx + 1}: Digital cutout. Isolate subject, composite seamlessly. Ignore orig bg.`;
       } else {
-        fullTextPrompt += ` Use Asset ${idx + 1} as a reference for the product look.`;
+        fullTextPrompt += ` Asset ${idx + 1}: Reference product look.`;
       }
     }
   }
@@ -292,11 +288,11 @@ export const separateDesignComponents = async (_p: string, ar: string, sz: strin
   const tasks = [
     { 
       mode: 'bg', 
-      p: "STRICT EXTRACTION: Remove only typography and logos. Keep all background decorations, environments, and subjects exactly as is. Output the pure static visual background." 
+      p: "Extract background. Remove typo/logos. Keep decor/subjects/env. Pure static background." 
     },
     { 
       mode: 'txt', 
-      p: "STRICT EXTRACTION: Extract only text content and brand logos onto a PURE WHITE background. Do not add any extra elements." 
+      p: "Extract text/logos only. Pure white background. No extra elements." 
     }
   ];
 
@@ -324,7 +320,7 @@ export const removeObjectWithMask = async (source: string, mask: string, instr?:
     if (!sourceData || !maskData) return null;
     const response = await ai.models.generateContent({
         model: MODEL_PRODUCTION,
-        contents: { parts: [{ text: `Eraser tool task: ${instr || 'Cleanly remove and rebuild the background.'}` }, { inlineData: sourceData }, { inlineData: maskData }]}
+        contents: { parts: [{ text: `Eraser tool: ${instr || 'Remove and rebuild background.'}` }, { inlineData: sourceData }, { inlineData: maskData }]}
     });
     const data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
     return data ? `data:image/png;base64,${data}` : null;
@@ -366,7 +362,7 @@ export const upscaleImageTo4K = async (image: string, aspectRatio: string): Prom
     model: MODEL_PRODUCTION,
     contents: {
       parts: [
-        { text: "Enhance and upscale this image to 4K resolution while maintaining perfect fidelity." },
+        { text: "Upscale to 4K, maintain fidelity." },
         { inlineData: sourceData }
       ]
     },
