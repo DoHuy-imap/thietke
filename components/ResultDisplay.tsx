@@ -84,7 +84,9 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   useEffect(() => {
     if (artDirection) {
-      setEditablePrompt(artDirection.final_prompt);
+      // Guideline: Hidden coordinates from UI prompt as requested
+      const promptOnly = artDirection.final_prompt.split(LAYOUT_TAG)[0];
+      setEditablePrompt(promptOnly);
       setLocalPlan(artDirection.designPlan);
       setLocalLayout(artDirection.layout_suggestion);
       setLayoutMask(null); 
@@ -118,20 +120,19 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
-      // NOTE: We don't append layout to editablePrompt anymore to keep UI clean as requested.
-      // It will be injected during the generation call.
+      // NOTE: We keep layout coordinates HIDDEN from editablePrompt UI
   };
   
   const handleGenerateClick = (append: boolean) => {
       if (imageResult.loading || externalAssets.loading || refinementResult.loading) return;
       
-      let fullPrompt = editablePrompt;
-      // Inject layout coordinates invisibly into the final API call prompt
-      if (localLayout && !fullPrompt.includes(LAYOUT_TAG)) {
-          fullPrompt += convertLayoutToPrompt(localLayout);
+      let fullPromptForApi = editablePrompt;
+      // Inject coordinates only for the actual API call
+      if (localLayout) {
+          fullPromptForApi += convertLayoutToPrompt(localLayout);
       }
       
-      onGenerateImages(fullPrompt, append, layoutMask);
+      onGenerateImages(fullPromptForApi, append, layoutMask);
   };
 
   const handleDownload4K = async (url: string) => {

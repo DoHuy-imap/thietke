@@ -60,19 +60,26 @@ const GalleryView: React.FC = () => {
           await deleteDesign(id);
           setDesigns(prev => prev.filter(d => d.id !== id));
           if (selectedDesign?.id === id) setSelectedDesign(null);
+          alert("Đã xóa thiết kế.");
         } catch (err) { alert("Không thể xóa."); }
     }
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
-    if(window.confirm(`Xóa ${selectedIds.length} thiết kế?`)) {
+    if(window.confirm(`Xóa ${selectedIds.length} thiết kế đã chọn?`)) {
         try {
-          for (const id of selectedIds) await deleteDesign(id);
+          for (const id of selectedIds) {
+            await deleteDesign(id);
+          }
           setDesigns(prev => prev.filter(d => !selectedIds.includes(d.id!)));
           setSelectedIds([]);
           setIsSelectMode(false);
-        } catch (err) { alert("Lỗi xóa hàng loạt."); }
+          alert(`Đã xóa ${selectedIds.length} thiết kế.`);
+        } catch (err) { 
+          alert("Lỗi khi xóa hàng loạt."); 
+          fetchDesigns(); // Refresh to match DB
+        }
     }
   };
 
@@ -106,7 +113,14 @@ const GalleryView: React.FC = () => {
         <div className="flex items-center gap-4">
             <button onClick={() => setFilterMine(!filterMine)} className={`text-[10px] px-5 py-2.5 rounded-xl font-black uppercase tracking-widest border transition-all ${filterMine ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>{filterMine ? 'Của tôi' : 'Tất cả'}</button>
             <button onClick={() => { setIsSelectMode(!isSelectMode); setSelectedIds([]); }} className={`text-[10px] px-5 py-2.5 rounded-xl font-black uppercase tracking-widest transition-all ${isSelectMode ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>{isSelectMode ? 'Hủy' : 'Chọn'}</button>
-            {isSelectMode && selectedIds.length > 0 && <button onClick={handleBulkDelete} className="text-[10px] px-5 py-2.5 bg-red-600 text-white font-black rounded-xl">Xóa ({selectedIds.length})</button>}
+            {isSelectMode && selectedIds.length > 0 && (
+                <button 
+                    onClick={handleBulkDelete} 
+                    className="text-[10px] px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl shadow-lg transition-all"
+                >
+                    Xóa ({selectedIds.length})
+                </button>
+            )}
         </div>
       </div>
 

@@ -16,6 +16,7 @@ import {
 import { saveDesignToHistory } from './services/historyDb';
 import { useAuth } from './contexts/UserContext';
 
+// Define initialRequest outside to ensure reference stability
 const initialRequest: ArtDirectionRequest = {
   productType: ProductType.POSTER,
   mainHeadline: '',
@@ -50,6 +51,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'studio' | 'gallery'>('studio');
   const [refreshGalleryKey, setRefreshGalleryKey] = useState(0);
 
+  // Use state spread to ensure fresh copy
   const [request, setRequest] = useState<ArtDirectionRequest>({ ...initialRequest });
   const [estimatedCost, setEstimatedCost] = useState(0);
 
@@ -72,12 +74,15 @@ const App: React.FC = () => {
   };
 
   const handleResetBrief = useCallback(() => {
+    // Force a fresh reset of all states
     setRequest({ ...initialRequest });
     setArtDirection(null);
     setImageResult({ images: [], loading: false, error: null });
     setRefinementResult({ images: [], loading: false, error: null });
     setSeparatedAssets({ background: null, textLayer: null, subjects: [], decor: [], lighting: null, loading: false, error: null });
     setAnalysisError(null);
+    // Switch to studio tab just in case
+    setActiveTab('studio');
   }, []);
 
   const handleAnalyze = async () => {

@@ -152,11 +152,11 @@ export const separateDesignComponents = async (_p: string, ar: string, sz: strin
   const tasks = [
     { 
       mode: 'bg', 
-      p: "TASK: SEPARATE THE BACKGROUND AND DECORATIONS. Include all environmental effects, atmosphere, particles, glows, and decorative background details. REMOVE ONLY text content, typography, and brand logos. The output should be the full visual scene without any words or branding." 
+      p: "TASK: SEPARATE THE BACKGROUND AND DECORATIONS. Include all environmental effects, atmosphere, particles, glows, and all decorative background details. REMOVE ONLY: text content, typography, and brand logos. The output should be the full visual scene with its decor but without any branding or text." 
     },
     { 
       mode: 'txt', 
-      p: "TASK: SEPARATE THE TEXT AND LOGO LAYER. Include the Brand Logo, Main Headline text, secondary copy, and all call-to-action elements. PLACE THESE ELEMENTS ON A SOLID, PURE WHITE BACKGROUND. Remove all background imagery and environmental effects." 
+      p: "TASK: SEPARATE THE TEXT AND LOGO LAYER. Include ONLY the Brand Logo, Main Headline text, secondary copy, and all call-to-action elements. PLACE THESE ELEMENTS ON A SOLID, PURE WHITE BACKGROUND. Remove all background imagery and environmental effects." 
     }
   ];
 
