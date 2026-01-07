@@ -40,18 +40,25 @@ export interface ReferenceImageConfig {
   attributes: ReferenceAttribute[];
 }
 
+export interface SubjectAsset {
+  image: string;
+  removeBackground: boolean;
+}
+
 export interface ArtDirectionRequest {
   productType: ProductType;
   mainHeadline: string;
+  typoReferenceImage: string | null; // Mới: Tham chiếu Typo cạnh Headline
   secondaryText: string;
   layoutRequirements: string;
   visualStyle: VisualStyle;
   colorOption: ColorOption;
   customColors: string[];
+  useCMYK: boolean; // Mới: Chế độ màu in ấn
   width: string; // cm
   height: string; // cm
   logoImage: string | null;
-  assetImages: string[];
+  assetImages: SubjectAsset[]; // Đổi từ string[] sang SubjectAsset[]
   referenceImages: ReferenceImageConfig[]; // Max 3
   batchSize: 1 | 2 | 3;
   quality: QualityLevel;

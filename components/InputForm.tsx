@@ -2,7 +2,7 @@
 import React, { useRef, useEffect } from 'react';
 import { 
   ArtDirectionRequest, ProductType, VisualStyle, ColorOption, 
-  ReferenceImageConfig, ReferenceAttribute 
+  ReferenceImageConfig, ReferenceAttribute, SubjectAsset 
 } from '../types';
 
 interface InputFormProps {
@@ -18,6 +18,7 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
   const assetInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
+  const typoRefInputRef = useRef<HTMLInputElement>(null);
 
   const attributes: ReferenceAttribute[] = ['Subject', 'Composition', 'Decoration', 'Style', 'Color', 'Typo'];
 
@@ -30,18 +31,18 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
     }
   }, [values.referenceImages]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'assetImages' | 'logoImage' | 'referenceImages') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'assetImages' | 'logoImage' | 'referenceImages' | 'typoReferenceImage') => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     if (field === 'assetImages') {
-      const currentImages = [...values.assetImages];
+      const currentAssets = [...values.assetImages];
       (Array.from(files) as File[]).forEach(file => {
         const reader = new FileReader();
         reader.onloadend = () => {
           if (reader.result) {
-            currentImages.push(reader.result as string);
-            onChange('assetImages', [...currentImages]);
+            currentAssets.push({ image: reader.result as string, removeBackground: false });
+            onChange('assetImages', [...currentAssets]);
           }
         };
         reader.readAsDataURL(file);
@@ -50,6 +51,12 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
       const reader = new FileReader();
       reader.onloadend = () => {
         if (reader.result) onChange('logoImage', reader.result as string);
+      };
+      reader.readAsDataURL(files[0]);
+    } else if (field === 'typoReferenceImage') {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) onChange('typoReferenceImage', reader.result as string);
       };
       reader.readAsDataURL(files[0]);
     } else if (field === 'referenceImages') {
@@ -84,6 +91,12 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
       return ref;
     });
     onChange('referenceImages', updatedRefs);
+  };
+
+  const toggleAssetAi = (idx: number) => {
+    const updatedAssets = [...values.assetImages];
+    updatedAssets[idx] = { ...updatedAssets[idx], removeBackground: !updatedAssets[idx].removeBackground };
+    onChange('assetImages', updatedAssets);
   };
 
   return (
@@ -140,7 +153,22 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
             <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> Core Messaging
           </label>
           <div className="space-y-3">
-            <input type="text" className="w-full bg-slate-950 border border-white/5 rounded-2xl px-5 py-3.5 text-xs text-white font-black placeholder-slate-800 outline-none transition-all uppercase" placeholder="MAIN HEADLINE" value={values.mainHeadline} onChange={(e) => onChange('mainHeadline', e.target.value)} />
+            <div className="flex gap-3">
+              <input type="text" className="flex-1 bg-slate-950 border border-white/5 rounded-2xl px-5 py-3.5 text-xs text-white font-black placeholder-slate-800 outline-none transition-all uppercase" placeholder="MAIN HEADLINE" value={values.mainHeadline} onChange={(e) => onChange('mainHeadline', e.target.value)} />
+              <div className="w-14 h-14 shrink-0">
+                {values.typoReferenceImage ? (
+                  <div className="relative w-full h-full rounded-xl overflow-hidden border-2 border-[#FFD300] group">
+                    <img src={values.typoReferenceImage} className="w-full h-full object-cover" />
+                    <button onClick={() => onChange('typoReferenceImage', null)} className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[7px] font-black uppercase text-white">X</button>
+                  </div>
+                ) : (
+                  <button onClick={() => typoRefInputRef.current?.click()} className="w-full h-full rounded-xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600 hover:text-[#FFD300] transition-all bg-slate-950/30" title="Tham chiếu Typo">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth={2}/></svg>
+                  </button>
+                )}
+                <input type="file" ref={typoRefInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'typoReferenceImage')} />
+              </div>
+            </div>
             <textarea className="w-full bg-slate-950 border border-white/5 rounded-2xl px-5 py-3.5 text-xs text-slate-300 placeholder-slate-800 h-20 resize-none outline-none font-bold" placeholder="Supporting text (CTA, dates, details...)" value={values.secondaryText} onChange={(e) => onChange('secondaryText', e.target.value)} />
           </div>
         </section>
@@ -149,16 +177,16 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
           <label className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] px-1 flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div> Strategy & Layout
           </label>
-          <textarea className="w-full bg-slate-950 border border-white/5 rounded-2xl px-5 py-3.5 text-xs text-slate-300 placeholder-slate-800 h-24 resize-none outline-none font-bold" placeholder="Instruction for element placement, text effects, logo integration..." value={values.layoutRequirements} onChange={(e) => onChange('layoutRequirements', e.target.value)} />
+          <textarea className="w-full bg-slate-950 border border-white/5 rounded-2xl px-5 py-3.5 text-xs text-slate-300 placeholder-slate-800 h-24 resize-none outline-none font-bold" placeholder="Phân tích bố cục chính xác tại đây (Ví dụ: đặt sp bên trái, headline nghiêng 15 độ bên phải...)" value={values.layoutRequirements} onChange={(e) => onChange('layoutRequirements', e.target.value)} />
         </section>
 
         <section className="space-y-4">
           <label className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] px-1 flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div> Production Assets
+            <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div> Visual Subjects (Sản phẩm)
           </label>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Brand Logo (Strict)</span>
+              <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Logo Thương Hiệu</span>
               <div className="flex flex-wrap gap-2">
                 {values.logoImage ? (
                   <div className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-yellow-500/50 group bg-white p-1">
@@ -174,12 +202,15 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
               </div>
             </div>
             <div className="space-y-2">
-              <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Visual Subjects</span>
+              <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Ảnh Sản Phẩm (AI Subjects)</span>
               <div className="flex flex-wrap gap-2">
-                {values.assetImages.map((img, i) => (
+                {values.assetImages.map((asset, i) => (
                   <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 group">
-                    <img src={img} className="w-full h-full object-cover" />
-                    <button onClick={() => onChange('assetImages', values.assetImages.filter((_, idx) => idx !== i))} className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[8px] font-black uppercase text-white">Xóa</button>
+                    <img src={asset.image} className="w-full h-full object-cover" />
+                    <div className="absolute top-0 left-0 right-0 p-0.5 flex justify-between z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => toggleAssetAi(i)} className={`p-1 rounded-md text-[6px] font-black uppercase tracking-tighter ${asset.removeBackground ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400'}`}>AI</button>
+                      <button onClick={() => onChange('assetImages', values.assetImages.filter((_, idx) => idx !== i))} className="p-1 bg-red-600 rounded-md text-white text-[6px]">X</button>
+                    </div>
                   </div>
                 ))}
                 <button onClick={() => assetInputRef.current?.click()} className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600 hover:text-blue-500 transition-all bg-slate-950/30">
@@ -193,7 +224,7 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
 
         <section className="space-y-4">
           <label className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] px-1 flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-pink-500"></div> Reference Ideas (Max 3)
+            <div className="w-1.5 h-1.5 rounded-full bg-pink-500"></div> Reference Ideas (Tham chiếu)
           </label>
           <div className="space-y-4">
              {values.referenceImages.map((ref) => (
@@ -225,26 +256,21 @@ const InputForm: React.FC<InputFormProps> = ({ values, onChange, onSubmit, onRes
           </label>
           <div className="space-y-4">
             <div className="space-y-2">
-               <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Color Palette</span>
+               <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Bảng Màu</span>
                <select className="w-full bg-slate-950 border border-white/5 rounded-2xl px-5 py-3 text-xs text-white font-bold outline-none" value={values.colorOption} onChange={(e) => onChange('colorOption', e.target.value)}>
                  {Object.values(ColorOption).map(opt => <option key={opt} value={opt}>{opt}</option>)}
                </select>
-               {values.colorOption === ColorOption.CUSTOM && (
-                 <div className="flex flex-wrap gap-2 p-3 bg-slate-950/50 rounded-2xl border border-white/5">
-                   {values.customColors.map((col, idx) => (
-                     <div key={idx} className="flex flex-col items-center gap-1">
-                        <input type="color" className="w-7 h-7 bg-transparent border-none cursor-pointer" value={col} onChange={(e) => {
-                          const newCols = [...values.customColors]; newCols[idx] = e.target.value; onChange('customColors', newCols);
-                        }} />
-                        <span className="text-[7px] text-slate-500 font-mono uppercase">{col}</span>
-                     </div>
-                   ))}
-                   <button onClick={() => onChange('customColors', [...values.customColors, '#000000'])} className="w-7 h-7 bg-slate-800 text-white rounded-lg font-black">+</button>
-                 </div>
-               )}
+               
+               {/* CMYK Toggle */}
+               <div className="flex items-center justify-between bg-slate-950 px-4 py-3 rounded-2xl border border-white/5 cursor-pointer hover:bg-slate-900/50 transition-colors" onClick={() => onChange('useCMYK', !values.useCMYK)}>
+                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Chế độ màu in ấn (CMYK Safe)</span>
+                  <div className={`w-10 h-5 rounded-full p-1 transition-all ${values.useCMYK ? 'bg-cyan-600' : 'bg-slate-800'}`}>
+                    <div className={`w-3 h-3 bg-white rounded-full shadow-md transition-all transform ${values.useCMYK ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                  </div>
+               </div>
             </div>
             <div className="space-y-2">
-               <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Visual Style</span>
+               <span className="text-[8px] text-slate-600 font-black uppercase ml-1">Phong Cách Visual</span>
                <select 
                  className="w-full bg-slate-950 border border-white/5 rounded-2xl px-5 py-3 text-xs text-white font-bold outline-none disabled:opacity-50" 
                  value={values.visualStyle} 

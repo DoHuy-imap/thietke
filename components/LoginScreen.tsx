@@ -19,22 +19,25 @@ const MapLogo = ({ className }: { className?: string }) => (
 const LoginScreen: React.FC = () => {
   const { login, checkApiKeyStatus } = useAuth();
   const [name, setName] = useState('');
-  const [manualApiKey, setManualApiKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [isApiKeyFound, setIsApiKeyFound] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkKey = async () => {
       const active = await checkApiKeyStatus();
       setIsApiKeyFound(active);
-      const savedKey = localStorage.getItem('map_app_api_key');
-      if (savedKey) setManualApiKey(savedKey);
       setLoading(false);
     };
     checkKey();
   }, [checkApiKeyStatus]);
+
+  const handleSelectKey = async () => {
+    if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
+      await (window as any).aistudio.openSelectKey();
+      setIsApiKeyFound(true);
+    }
+  };
 
   const handleStart = async () => {
     if (!name.trim()) {
@@ -42,28 +45,12 @@ const LoginScreen: React.FC = () => {
       return;
     }
 
-    setIsValidating(true);
-    setError(null);
-
-    try {
-      const currentActive = await checkApiKeyStatus();
-      const finalApiKey = manualApiKey.trim();
-
-      if (!currentActive && !finalApiKey) {
-        if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
-          await (window as any).aistudio.openSelectKey();
-          login(name.trim());
-        } else {
-          throw new Error("Vui lòng nhập Gemini API Key để tiếp tục.");
-        }
-      } else {
-        login(name.trim(), finalApiKey || undefined);
-      }
-    } catch (e: any) {
-      setError(e.message || "Kết nối thất bại. Vui lòng kiểm tra API Key.");
-    } finally {
-      setIsValidating(false);
+    if (!isApiKeyFound) {
+      setError("Vui lòng chọn API Key để tiếp tục.");
+      return;
     }
+
+    login(name.trim());
   };
 
   if (loading) return (
@@ -106,50 +93,42 @@ const LoginScreen: React.FC = () => {
           </div>
 
           <div className="text-left space-y-2">
-            <div className="flex justify-between items-center px-4">
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Gemini API Key</label>
-              <span className="text-[9px] text-emerald-500 font-black uppercase tracking-widest flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                Mã hóa cục bộ
-              </span>
-            </div>
-            <input 
-              type="password" 
-              placeholder="Nhập API Key của bạn..."
-              value={manualApiKey}
-              onChange={(e) => {
-                setManualApiKey(e.target.value);
-                if (error) setError(null);
-              }}
-              className="w-full bg-slate-950 border border-white/5 rounded-3xl px-6 py-4 text-white font-mono text-sm focus:ring-2 focus:ring-[#FFD300]/40 outline-none transition-all placeholder-slate-800"
-            />
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Trạng thái API Key</label>
+            {isApiKeyFound ? (
+              <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-3xl px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                  <span className="text-emerald-500 text-xs font-bold">API Key đã sẵn sàng</span>
+                </div>
+                <button onClick={handleSelectKey} className="text-[9px] text-slate-400 hover:text-white underline uppercase font-black tracking-widest">Thay đổi</button>
+              </div>
+            ) : (
+              <button 
+                onClick={handleSelectKey}
+                className="w-full bg-slate-950 border border-dashed border-slate-700 hover:border-[#FFD300] rounded-3xl px-6 py-4 text-slate-500 hover:text-[#FFD300] transition-all flex items-center justify-center gap-3"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 7a2 2 0 012 2m-2 4a2 2 0 012 2m-2-4a2 2 0 01-2-2m-2 4a2 2 0 01-2 2m5-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                <span className="text-xs font-bold">Nhấn để chọn API Key an toàn</span>
+              </button>
+            )}
             <p className="text-[9px] text-slate-600 px-4 mt-1 leading-relaxed">
-              API Key sẽ được lưu trữ an toàn trong <strong>Local Storage</strong> của trình duyệt và chỉ dùng để gọi API từ máy của bạn.
+              Dữ liệu API Key được quản lý trực tiếp bởi hệ thống, đảm bảo tuyệt mật.
             </p>
           </div>
 
           <button 
             onClick={handleStart}
-            disabled={isValidating || !name}
+            disabled={!name || !isApiKeyFound}
             className={`w-full py-5 font-black rounded-3xl shadow-xl uppercase tracking-[0.2em] transition-all text-sm group flex items-center justify-center gap-3
-                ${isValidating 
-                    ? 'bg-slate-800 text-slate-500 cursor-wait' 
+                ${(!name || !isApiKeyFound) 
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
                     : 'bg-[#FFD300] hover:bg-[#FFC000] text-black shadow-[#FFD300]/20 active:scale-95'
                 }`}
           >
-            {isValidating ? (
-                <>
-                   <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
-                   Đang xác thực...
-                </>
-            ) : (
-                <>
-                    Kết nối Studio
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </>
-            )}
+            Kết nối Studio
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
           </button>
         </div>
         

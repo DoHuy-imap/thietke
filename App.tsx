@@ -20,11 +20,13 @@ import { useAuth } from './contexts/UserContext';
 const initialRequest: ArtDirectionRequest = {
   productType: ProductType.POSTER,
   mainHeadline: '',
+  typoReferenceImage: null,
   secondaryText: '',
   layoutRequirements: '',
   visualStyle: VisualStyle.MODERN_TECH,
   colorOption: ColorOption.AI_CUSTOM,
   customColors: ['#FFD300', '#000000', '#FFFFFF'],
+  useCMYK: false,
   width: '60',
   height: '90',
   assetImages: [],

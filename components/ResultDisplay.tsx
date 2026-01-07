@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { ArtDirectionRequest, ArtDirectionResponse, ImageGenerationResult, SeparatedAssets, DesignPlan, LayoutSuggestion } from '../types';
 import LayoutEditor from './LayoutEditor';
 import SmartRemover from './SmartRemover';
-import { convertLayoutToPrompt, upscaleImageTo4K, LAYOUT_TAG } from '../services/geminiService';
+import { convertLayoutToPrompt, upscaleImageTo4K, LAYOUT_TAG, suggestNewLayout } from '../services/geminiService';
 
 const triggerDownload = (base64Data: string, fileName: string) => {
   try {
@@ -70,7 +70,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const [showSmartRemover, setShowSmartRemover] = useState(false);
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [layoutMask, setLayoutMask] = useState<string | null>(null);
-  const [isUpscalingLayer, setIsUpscalingLayer] = useState<string | null>(null);
+  const [isRefreshingLayout, setIsRefreshingLayout] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
 
   const criteriaList: { key: keyof DesignPlan; label: string }[] = [
@@ -84,7 +84,6 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   useEffect(() => {
     if (artDirection) {
-      // Guideline: Hidden coordinates from UI prompt as requested
       const promptOnly = artDirection.final_prompt.split(LAYOUT_TAG)[0];
       setEditablePrompt(promptOnly);
       setLocalPlan(artDirection.designPlan);
@@ -120,19 +119,30 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
-      // NOTE: We keep layout coordinates HIDDEN from editablePrompt UI
   };
   
   const handleGenerateClick = (append: boolean) => {
       if (imageResult.loading || externalAssets.loading || refinementResult.loading) return;
       
       let fullPromptForApi = editablePrompt;
-      // Inject coordinates only for the actual API call
       if (localLayout) {
           fullPromptForApi += convertLayoutToPrompt(localLayout);
       }
       
       onGenerateImages(fullPromptForApi, append, layoutMask);
+  };
+
+  const handleRefreshLayout = async () => {
+    if (!artDirection || isRefreshingLayout) return;
+    setIsRefreshingLayout(true);
+    try {
+      const newLayout = await suggestNewLayout(artDirection, request);
+      setLocalLayout(newLayout);
+    } catch (e) {
+      alert("Lỗi khi đề xuất bố cục mới.");
+    } finally {
+      setIsRefreshingLayout(false);
+    }
   };
 
   const handleDownload4K = async (url: string) => {
@@ -217,7 +227,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                     </div>
                     <div className="flex flex-wrap gap-4">
                        <div className="flex gap-2.5">
-                           {request.assetImages.map((img, i) => (<div key={i} className="w-20 h-20 bg-slate-800 rounded-3xl overflow-hidden border-2 border-white/5 shadow-2xl group relative transition-transform hover:scale-105"><img src={img} className="w-full h-full object-cover" alt="Product" /></div>))}
+                           {request.assetImages.map((asset, i) => (<div key={i} className="w-20 h-20 bg-slate-800 rounded-3xl overflow-hidden border-2 border-white/5 shadow-2xl group relative transition-transform hover:scale-105"><img src={asset.image} className="w-full h-full object-cover" alt="Product" />{asset.removeBackground && <div className="absolute top-1 left-1 bg-blue-600 text-[6px] font-black text-white px-1 rounded shadow">AI</div>}</div>))}
                        </div>
                     </div>
                  </div>
@@ -242,9 +252,9 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                     key={artDirection?.final_prompt}
                     layout={localLayout} 
                     onLayoutChange={(updated) => setLocalLayout(updated)} 
-                    onConfirm={handleLayoutConfirm} 
-                    onUpdateDescription={() => {}} 
-                    isUpdatingDescription={false} 
+                    onConfirm={handleLayoutConfirm}
+                    onRefreshLayout={handleRefreshLayout}
+                    isRefreshing={isRefreshingLayout}
                 />
              )}
 

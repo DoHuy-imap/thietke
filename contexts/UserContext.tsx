@@ -7,7 +7,7 @@ interface UserSettings {
 
 interface AuthContextType {
   user: UserSettings | null;
-  login: (name: string, apiKey?: string) => void;
+  login: (name: string) => void;
   logout: () => void;
   deleteAccountData: () => Promise<void>;
   checkApiKeyStatus: () => Promise<boolean>;
@@ -17,7 +17,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'map_app_user_v3';
-const API_KEY_STORAGE = 'map_app_api_key';
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 phút
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -41,13 +40,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  const login = (name: string, apiKey?: string) => {
+  const login = (name: string) => {
     const newUser = { displayName: name };
     setUser(newUser);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-    if (apiKey) {
-      localStorage.setItem(API_KEY_STORAGE, apiKey);
-    }
   };
 
   const logout = useCallback(() => {
@@ -58,7 +54,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
     try {
         localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(API_KEY_STORAGE);
     } catch (e) {
         console.error("Error clearing storage:", e);
     }
@@ -100,13 +95,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const checkApiKeyStatus = async () => {
     try {
+      // Chỉ kiểm tra qua aistudio hoặc biến môi trường process.env.API_KEY
       if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        if (hasKey) return true;
+        return await (window as any).aistudio.hasSelectedApiKey();
       }
-      if (process.env.API_KEY && process.env.API_KEY.length > 0) return true;
-      const savedKey = localStorage.getItem(API_KEY_STORAGE);
-      return !!(savedKey && savedKey.length > 10);
+      return !!(process.env.API_KEY && process.env.API_KEY.length > 5);
     } catch (e) {
       return false;
     }
