@@ -25,8 +25,15 @@ const extractBase64AndMime = (dataUrl: string | null): { mimeType: string, data:
 };
 
 const getGeminiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key chưa được cấu hình.");
+  // Ưu tiên API_KEY từ môi trường hệ thống (AI Studio)
+  let apiKey = process.env.API_KEY;
+  
+  // Nếu không có, tìm trong Local Storage (đã được lưu khi đăng nhập)
+  if (!apiKey || apiKey.length < 5) {
+    apiKey = localStorage.getItem('map_app_api_key') || "";
+  }
+
+  if (!apiKey) throw new Error("API Key chưa được cấu hình. Vui lòng đăng nhập lại.");
   return new GoogleGenAI({ apiKey });
 };
 

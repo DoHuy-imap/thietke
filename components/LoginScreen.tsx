@@ -19,6 +19,7 @@ const MapLogo = ({ className }: { className?: string }) => (
 const LoginScreen: React.FC = () => {
   const { login, checkApiKeyStatus } = useAuth();
   const [name, setName] = useState('');
+  const [manualApiKey, setManualApiKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [isApiKeyFound, setIsApiKeyFound] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -28,12 +29,13 @@ const LoginScreen: React.FC = () => {
     const checkKey = async () => {
       const active = await checkApiKeyStatus();
       setIsApiKeyFound(active);
+      const savedKey = localStorage.getItem('map_app_api_key');
+      if (savedKey) setManualApiKey(savedKey);
       setLoading(false);
     };
     checkKey();
   }, [checkApiKeyStatus]);
 
-  // FIX: Replace manual API key entry with platform openSelectKey() dialog
   const handleStart = async () => {
     if (!name.trim()) {
       setError("Vui lòng nhập tên nhà thiết kế.");
@@ -44,18 +46,18 @@ const LoginScreen: React.FC = () => {
     setError(null);
 
     try {
-      const keyActive = await checkApiKeyStatus();
-      if (!keyActive) {
-        // Guideline: Trigger mandatory API Key selection for high-quality image generation
+      const currentActive = await checkApiKeyStatus();
+      const finalApiKey = manualApiKey.trim();
+
+      if (!currentActive && !finalApiKey) {
         if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
           await (window as any).aistudio.openSelectKey();
-          // Guideline: Assume selection was successful to mitigate race condition
           login(name.trim());
         } else {
-          throw new Error("Vui lòng truy cập ứng dụng qua AI Studio để sử dụng tính năng thiết kế.");
+          throw new Error("Vui lòng nhập Gemini API Key để tiếp tục.");
         }
       } else {
-        login(name.trim());
+        login(name.trim(), finalApiKey || undefined);
       }
     } catch (e: any) {
       setError(e.message || "Kết nối thất bại. Vui lòng kiểm tra API Key.");
@@ -72,7 +74,6 @@ const LoginScreen: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden font-['Inter']">
-      {/* Glow Effects */}
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#FFD300]/10 rounded-full blur-[120px] animate-pulse"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] animate-pulse"></div>
 
@@ -94,7 +95,7 @@ const LoginScreen: React.FC = () => {
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Định danh nhà thiết kế</label>
             <input 
               type="text" 
-              placeholder="Tên của bạn..."
+              placeholder="Nhập tên của bạn..."
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -104,47 +105,28 @@ const LoginScreen: React.FC = () => {
             />
           </div>
 
-          {!isApiKeyFound && (
-              <div className="text-left space-y-2 animate-fade-in">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Cấu hình Gemini API</label>
-                <div className="p-6 bg-blue-900/10 rounded-3xl border border-blue-500/20 text-center">
-                   <p className="text-[10px] text-slate-400 leading-relaxed mb-4">
-                     Mẫu thiết kế này sử dụng Gemini 3 Pro để đảm bảo chất lượng in ấn 4K. 
-                     Vui lòng chọn API Key từ một <strong>GCP Project đã kích hoạt thanh toán (Paid)</strong>.
-                   </p>
-                   <a 
-                     href="https://ai.google.dev/gemini-api/docs/billing" 
-                     target="_blank" 
-                     rel="noreferrer" 
-                     className="text-[9px] text-blue-400 underline hover:text-blue-300 block mb-2"
-                   >
-                     Tìm hiểu về Billing & Quota
-                   </a>
-                </div>
-              </div>
-          )}
-
-          {isApiKeyFound && (
-              <div className="p-4 bg-emerald-900/20 rounded-2xl border border-emerald-500/20 flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                 </div>
-                 <div className="text-left">
-                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Hệ thống đã sẵn sàng</p>
-                    <p className="text-[10px] text-slate-400">API Key đã được cấu hình.</p>
-                 </div>
-                 <button 
-                  onClick={async () => {
-                    if ((window as any).aistudio?.openSelectKey) {
-                      await (window as any).aistudio.openSelectKey();
-                    }
-                  }} 
-                  className="ml-auto text-[9px] text-slate-500 hover:text-white underline"
-                >
-                  Thay đổi
-                </button>
-              </div>
-          )}
+          <div className="text-left space-y-2">
+            <div className="flex justify-between items-center px-4">
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Gemini API Key</label>
+              <span className="text-[9px] text-emerald-500 font-black uppercase tracking-widest flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                Mã hóa cục bộ
+              </span>
+            </div>
+            <input 
+              type="password" 
+              placeholder="Nhập API Key của bạn..."
+              value={manualApiKey}
+              onChange={(e) => {
+                setManualApiKey(e.target.value);
+                if (error) setError(null);
+              }}
+              className="w-full bg-slate-950 border border-white/5 rounded-3xl px-6 py-4 text-white font-mono text-sm focus:ring-2 focus:ring-[#FFD300]/40 outline-none transition-all placeholder-slate-800"
+            />
+            <p className="text-[9px] text-slate-600 px-4 mt-1 leading-relaxed">
+              API Key sẽ được lưu trữ an toàn trong <strong>Local Storage</strong> của trình duyệt và chỉ dùng để gọi API từ máy của bạn.
+            </p>
+          </div>
 
           <button 
             onClick={handleStart}
@@ -158,11 +140,11 @@ const LoginScreen: React.FC = () => {
             {isValidating ? (
                 <>
                    <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
-                   Checking...
+                   Đang xác thực...
                 </>
             ) : (
                 <>
-                    {isApiKeyFound ? 'Kết nối Studio' : 'Chọn Key & Bắt đầu'}
+                    Kết nối Studio
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
@@ -171,10 +153,10 @@ const LoginScreen: React.FC = () => {
           </button>
         </div>
         
-        <div className="mt-12 flex justify-center gap-4 opacity-50">
-             <div className="w-10 h-1 bg-slate-800 rounded-full"></div>
-             <div className="w-10 h-1 bg-slate-800 rounded-full"></div>
-             <div className="w-10 h-1 bg-slate-800 rounded-full"></div>
+        <div className="mt-12 flex justify-center gap-4 opacity-30">
+             <div className="w-8 h-1 bg-slate-800 rounded-full"></div>
+             <div className="w-8 h-1 bg-slate-800 rounded-full"></div>
+             <div className="w-8 h-1 bg-slate-800 rounded-full"></div>
         </div>
       </div>
     </div>
