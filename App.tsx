@@ -16,6 +16,23 @@ import {
 import { saveDesignToHistory } from './services/historyDb';
 import { useAuth } from './contexts/UserContext';
 
+const initialRequest: ArtDirectionRequest = {
+  productType: ProductType.POSTER,
+  mainHeadline: '',
+  secondaryText: '',
+  layoutRequirements: '',
+  visualStyle: VisualStyle.MODERN_TECH,
+  colorOption: ColorOption.AI_CUSTOM,
+  customColors: ['#FFD300', '#000000', '#FFFFFF'],
+  width: '60',
+  height: '90',
+  assetImages: [],
+  logoImage: null,
+  referenceImages: [], 
+  batchSize: 1,
+  quality: QualityLevel.LOW
+};
+
 const MapMiniLogo = () => (
   <div className="w-10 h-10 bg-black border-2 border-[#FFD300] rounded-xl flex items-center justify-center shadow-lg shadow-[#FFD300]/10 overflow-hidden">
      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full p-1.5">
@@ -33,24 +50,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'studio' | 'gallery'>('studio');
   const [refreshGalleryKey, setRefreshGalleryKey] = useState(0);
 
-  const initialRequest: ArtDirectionRequest = {
-    productType: ProductType.POSTER,
-    mainHeadline: '',
-    secondaryText: '',
-    layoutRequirements: '',
-    visualStyle: VisualStyle.MODERN_TECH,
-    colorOption: ColorOption.AI_CUSTOM,
-    customColors: ['#FFD300', '#000000', '#FFFFFF'],
-    width: '60',
-    height: '90',
-    assetImages: [],
-    logoImage: null,
-    referenceImages: [], 
-    batchSize: 1,
-    quality: QualityLevel.LOW
-  };
-
-  const [request, setRequest] = useState<ArtDirectionRequest>(initialRequest);
+  const [request, setRequest] = useState<ArtDirectionRequest>({ ...initialRequest });
   const [estimatedCost, setEstimatedCost] = useState(0);
 
   useEffect(() => {
@@ -71,14 +71,14 @@ const App: React.FC = () => {
     setRequest(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleResetBrief = () => {
-    setRequest(initialRequest);
+  const handleResetBrief = useCallback(() => {
+    setRequest({ ...initialRequest });
     setArtDirection(null);
     setImageResult({ images: [], loading: false, error: null });
     setRefinementResult({ images: [], loading: false, error: null });
     setSeparatedAssets({ background: null, textLayer: null, subjects: [], decor: [], lighting: null, loading: false, error: null });
     setAnalysisError(null);
-  };
+  }, []);
 
   const handleAnalyze = async () => {
     if (!request.mainHeadline) {
@@ -147,7 +147,6 @@ const App: React.FC = () => {
       );
       setSeparatedAssets({ ...result, loading: false, error: null });
       
-      // Update imageResult to include separated layers as new results
       const layerImages: StudioImage[] = [];
       if (result.background) layerImages.push({ url: result.background, isNew: true });
       if (result.textLayer) layerImages.push({ url: result.textLayer, isNew: true });

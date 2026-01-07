@@ -162,7 +162,7 @@ const SmartRemover: React.FC<SmartRemoverProps> = ({ imageUrl, onClose, onProces
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/98 flex flex-col items-center justify-center p-6 backdrop-blur-3xl animate-fade-in">
+    <div className="fixed inset-0 z-[110] bg-black/98 flex flex-col items-center justify-center p-6 backdrop-blur-3xl animate-fade-in">
       <div className="w-full max-w-5xl bg-slate-900/50 p-6 rounded-[3rem] border border-white/10 shadow-2xl backdrop-blur-xl mb-6 relative z-10">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">

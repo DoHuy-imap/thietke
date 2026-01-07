@@ -56,7 +56,6 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   onGenerateImages,
   onUpdatePlan,
   onSeparateLayout,
-  onRefineImage,
   onSmartRemove,
   onResetRefinement,
   separatedAssets: externalAssets,
@@ -100,7 +99,8 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   useEffect(() => {
     let interval: any;
-    if (imageResult.loading || externalAssets.loading) {
+    const isAnyLoading = imageResult.loading || externalAssets.loading || refinementResult.loading;
+    if (isAnyLoading) {
       setLoadingProgress(0);
       interval = setInterval(() => {
         setLoadingProgress(prev => {
@@ -113,23 +113,25 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
       if (interval) clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [imageResult.loading, externalAssets.loading]);
+  }, [imageResult.loading, externalAssets.loading, refinementResult.loading]);
 
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
-      const layoutInstruction = convertLayoutToPrompt(localLayout);
-      setEditablePrompt(prev => {
-          if (prev.includes(LAYOUT_TAG)) {
-              return prev.split(LAYOUT_TAG)[0] + layoutInstruction;
-          }
-          return prev + layoutInstruction;
-      });
+      // NOTE: We don't append layout to editablePrompt anymore to keep UI clean as requested.
+      // It will be injected during the generation call.
   };
   
   const handleGenerateClick = (append: boolean) => {
-      if (imageResult.loading) return;
-      onGenerateImages(editablePrompt, append, layoutMask);
+      if (imageResult.loading || externalAssets.loading || refinementResult.loading) return;
+      
+      let fullPrompt = editablePrompt;
+      // Inject layout coordinates invisibly into the final API call prompt
+      if (localLayout && !fullPrompt.includes(LAYOUT_TAG)) {
+          fullPrompt += convertLayoutToPrompt(localLayout);
+      }
+      
+      onGenerateImages(fullPrompt, append, layoutMask);
   };
 
   const handleDownload4K = async (url: string) => {
@@ -145,16 +147,6 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const handleStartSeparation = () => {
       if (!selectedImage) return;
       onSeparateLayout(selectedImage, 'full');
-  };
-
-  const handleUpscaleLayer = async (url: string, type: string) => {
-      if (!url) return;
-      setIsUpscalingLayer(type);
-      try {
-          const res = await upscaleImageTo4K(url, artDirection?.recommendedAspectRatio || "1:1");
-          triggerDownload(res, `map-layer-${type}-4k.png`);
-      } catch(e) { alert("Lỗi upscale layer."); }
-      finally { setIsUpscalingLayer(null); }
   };
 
   if (analysisError) {
@@ -264,14 +256,14 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                  <button onClick={() => localPlan && onUpdatePlan(localPlan)} disabled={isUpdatingPlan} className="flex-1 py-7 bg-slate-800/80 hover:bg-slate-700 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 border border-white/5 shadow-xl">Cập nhật Kế hoạch</button>
                  <button 
                     onClick={() => handleGenerateClick(false)} 
-                    disabled={imageResult.loading} 
+                    disabled={imageResult.loading || externalAssets.loading || refinementResult.loading} 
                     className={`flex-[2] py-7 font-black rounded-3xl shadow-2xl transition-all uppercase tracking-widest text-[11px] border-t-2 border-white/20 flex items-center justify-center gap-3
-                        ${imageResult.loading ? 'bg-slate-800 text-slate-500 cursor-wait' : 'bg-[#FFD300] hover:bg-[#FFC000] text-black'}`}
+                        ${(imageResult.loading || externalAssets.loading || refinementResult.loading) ? 'bg-slate-800 text-slate-500 cursor-wait' : 'bg-[#FFD300] hover:bg-[#FFC000] text-black'}`}
                  >
-                    {imageResult.loading ? (
+                    {(imageResult.loading || externalAssets.loading || refinementResult.loading) ? (
                         <>
                           <div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
-                          Đang Sản Xuất...
+                          Đang xử lý...
                         </>
                     ) : 'Sản Xuất Hình Ảnh'}
                  </button>
@@ -280,21 +272,21 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
         </div>
       )}
 
-      {(imageResult.images.length > 0 || imageResult.loading || externalAssets.loading) && (
+      {(imageResult.images.length > 0 || imageResult.loading || externalAssets.loading || refinementResult.loading) && (
           <div className="flex-grow flex flex-col gap-10 pb-32 mt-6">
             <div className="flex items-center justify-between px-6">
                 <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Studio Output</h3>
                 <button 
                     onClick={() => handleGenerateClick(true)} 
-                    disabled={imageResult.loading || externalAssets.loading} 
+                    disabled={imageResult.loading || externalAssets.loading || refinementResult.loading} 
                     className={`text-[10px] border-2 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all
-                        ${(imageResult.loading || externalAssets.loading) ? 'border-slate-700 text-slate-600' : 'text-[#FFD300] border-[#FFD300]/20 hover:text-white hover:border-[#FFD300]'}`}
+                        ${(imageResult.loading || externalAssets.loading || refinementResult.loading) ? 'border-slate-700 text-slate-600' : 'text-[#FFD300] border-[#FFD300]/20 hover:text-white hover:border-[#FFD300]'}`}
                 >
-                    {(imageResult.loading || externalAssets.loading) ? 'Đang thực hiện...' : 'Thêm biến thể'}
+                    {(imageResult.loading || externalAssets.loading || refinementResult.loading) ? 'Đang thực hiện...' : 'Thêm biến thể'}
                 </button>
             </div>
             
-            {(imageResult.loading || externalAssets.loading) && (
+            {(imageResult.loading || externalAssets.loading || refinementResult.loading) && (
                 <div className="w-full min-h-[450px] bg-slate-950/80 rounded-[4rem] border border-white/10 flex flex-col items-center justify-center gap-10 relative overflow-hidden backdrop-blur-3xl shadow-[0_0_100px_rgba(0,0,0,0.5)]">
                      <div className="absolute inset-0 bg-gradient-to-br from-[#FFD300]/5 to-blue-500/10 opacity-40"></div>
                      <div className="relative z-10 flex flex-col items-center w-full max-w-md px-10">
@@ -310,10 +302,10 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                         
                         <div className="text-center mb-6">
                            <h4 className="text-white font-black uppercase tracking-[0.5em] text-lg mb-2">
-                             {externalAssets.loading ? 'Layer Separation' : 'Production Engine'}
+                             {externalAssets.loading ? 'Graphic Separation' : refinementResult.loading ? 'AI Healing Engine' : 'Production Engine'}
                            </h4>
                            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
-                             {externalAssets.loading ? 'Đang tách phân rã lớp đồ họa...' : `Tác phẩm Full-Frame • ${artDirection?.recommendedAspectRatio || "1:1"}`}
+                             {externalAssets.loading ? 'Đang tách phân rã lớp đồ họa...' : refinementResult.loading ? 'Đang xóa và tái tạo bối cảnh...' : `Tác phẩm Full-Frame • ${artDirection?.recommendedAspectRatio || "1:1"}`}
                            </p>
                         </div>
 
@@ -325,20 +317,20 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                         </div>
                         
                         <div className="flex justify-between w-full text-[9px] font-black uppercase tracking-widest text-slate-600 italic">
-                            <span>{externalAssets.loading ? 'Extracting visual components' : 'Initializing Print Engine'}</span>
+                            <span>{externalAssets.loading ? 'Extracting elements' : refinementResult.loading ? 'Healing pixels' : 'Initializing Print Engine'}</span>
                             <span>{Math.round(loadingProgress)}%</span>
                         </div>
 
                         <div className="mt-10 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm animate-pulse">
                            <p className="text-[9px] text-[#FFD300] font-black uppercase tracking-widest text-center">
-                             {externalAssets.loading ? 'Director đang phân tích và trích xuất từng lớp thiết kế...' : 'AI đang xuất file đồ họa cao cấp cho in ấn...'}
+                             {externalAssets.loading ? 'Director đang phân tích và trích xuất từng lớp thiết kế...' : refinementResult.loading ? 'Hệ thống AI đang tính toán pixels để lấp đầy vùng trống...' : 'AI đang xuất file đồ họa cao cấp cho in ấn...'}
                            </p>
                         </div>
                      </div>
                 </div>
             )}
 
-            {imageResult.images.length > 0 && !imageResult.loading && !externalAssets.loading && (
+            {imageResult.images.length > 0 && !imageResult.loading && !externalAssets.loading && !refinementResult.loading && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4 animate-fade-in-up">
                     {imageResult.images.map((img, idx) => (
                       <div 

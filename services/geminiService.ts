@@ -2,55 +2,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { 
   ArtDirectionRequest, ArtDirectionResponse, ColorOption, DesignPlan, 
-  LayoutSuggestion, SeparatedAssets, QualityLevel, CostBreakdown,
-  ReferenceAttribute 
+  LayoutSuggestion, SeparatedAssets, QualityLevel, CostBreakdown
 } from "../types";
 
-// Sử dụng model Pro duy nhất cho việc lập kế hoạch vì đây là "Art Director" tốt nhất
+// Sử dụng model Pro cho việc lập kế hoạch và sản xuất chất lượng cao
 const MODEL_PLANNING = "gemini-3-pro-preview";
 const MODEL_PRODUCTION = "gemini-3-pro-image-preview";
 
 const QUALITY_BOOSTERS = "professional commercial graphic design, advertising award winning style, high fidelity, vector quality sharp text, premium product photography lighting, 8k resolution, clean sharp edges";
 const NEGATIVE_PROMPT = "blurry, low quality, messy composition, distorted logo, text errors, watermark, signature, lowres, grainy, frame, slanted, perspective mockup, extra limbs, bad anatomy, noisy background";
 
-export const LAYOUT_TAG = "\n\n### DESIGN LAYOUT ###\n";
+export const LAYOUT_TAG = "\n\n### DESIGN LAYOUT COORDINATES ###\n";
 
-export const estimateRequestCost = (request: ArtDirectionRequest): CostBreakdown => {
-    const baseCost = 25; // Pro planning cost
-    const productionCost = request.batchSize * (request.quality === QualityLevel.HIGH ? 25 : 12);
-
-    return {
-        analysisInputTokens: 0,
-        analysisOutputTokens: 0,
-        analysisCostVND: baseCost,
-        generationImageCount: request.batchSize,
-        generationCostVND: productionCost,
-        totalCostVND: baseCost + productionCost
-    };
-};
-
-export const getClosestAspectRatio = (width: string, height: string): "1:1" | "3:4" | "4:3" | "9:16" | "16:9" => {
-  const w = parseFloat(width);
-  const h = parseFloat(height);
-  if (isNaN(w) || isNaN(h) || h === 0) return "1:1";
-  
-  const currentRatio = w / h;
-  const supportedRatios: { label: "1:1" | "3:4" | "4:3" | "9:16" | "16:9", val: number }[] = [
-    { label: "1:1", val: 1.0 },
-    { label: "3:4", val: 0.75 },
-    { label: "4:3", val: 1.3333 },
-    { label: "9:16", val: 0.5625 },
-    { label: "16:9", val: 1.7777 }
-  ];
-  
-  return supportedRatios.reduce((prev, curr) => 
-    Math.abs(curr.val - currentRatio) < Math.abs(prev.val - currentRatio) ? curr : prev
-  ).label;
-};
-
-/**
- * Helper to extract base64 data and mimeType from a Data URL
- */
 const extractBase64AndMime = (dataUrl: string | null): { mimeType: string, data: string } | null => {
   if (!dataUrl) return null;
   const match = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
@@ -67,116 +30,59 @@ const getGeminiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+export const estimateRequestCost = (request: ArtDirectionRequest): CostBreakdown => {
+    const baseCost = 25; 
+    const productionCost = request.batchSize * (request.quality === QualityLevel.HIGH ? 25 : 12);
+    return {
+        analysisInputTokens: 0, analysisOutputTokens: 0, analysisCostVND: baseCost,
+        generationImageCount: request.batchSize, generationCostVND: productionCost,
+        totalCostVND: baseCost + productionCost
+    };
+};
+
+export const getClosestAspectRatio = (width: string, height: string): "1:1" | "3:4" | "4:3" | "9:16" | "16:9" => {
+  const w = parseFloat(width);
+  const h = parseFloat(height);
+  if (isNaN(w) || h === 0) return "1:1";
+  const currentRatio = w / h;
+  const supportedRatios: { label: "1:1" | "3:4" | "4:3" | "9:16" | "16:9", val: number }[] = [
+    { label: "1:1", val: 1.0 }, { label: "3:4", val: 0.75 }, { label: "4:3", val: 1.3333 },
+    { label: "9:16", val: 0.5625 }, { label: "16:9", val: 1.7777 }
+  ];
+  return supportedRatios.reduce((prev, curr) => Math.abs(curr.val - currentRatio) < Math.abs(prev.val - currentRatio) ? curr : prev).label;
+};
+
 export const generateArtDirection = async (request: ArtDirectionRequest): Promise<ArtDirectionResponse> => {
   const ai = getGeminiClient();
   const targetRatio = getClosestAspectRatio(request.width, request.height);
-  
-  const refInstructions = request.referenceImages.map((ref, idx) => {
-    return `Reference Image ${idx + 1} Attributes to inherit: ${ref.attributes.join(', ')}. Use only these selected parts.`;
-  }).join('\n');
-
   const colorInstr = request.colorOption === ColorOption.BRAND_LOGO 
-    ? "Analyze the Brand Logo colors and use them as the primary theme for the entire design." 
-    : request.colorOption === ColorOption.CUSTOM 
-    ? `Strictly use this HEX color palette: ${request.customColors.join(', ')}.`
-    : "AI Custom: Choose professional advertising colors that harmonize with the subject.";
+    ? "Analyze the Brand Logo colors and use them as the primary theme." 
+    : request.colorOption === ColorOption.CUSTOM ? `Strictly use HEX: ${request.customColors.join(', ')}.` : "AI Custom professional colors.";
 
   const promptParts: any[] = [{ text: `
-    ROLE: YOU ARE A WORLD-CLASS SENIOR ART DIRECTOR.
-    
-    TASK: CREATE A COMPREHENSIVE DESIGN BRIEF FOR AN IMAGE GENERATION ENGINE.
-    
-    SPECIFICATIONS:
-    - Target Output: ${request.productType}
-    - Dimensions: ${request.width}cm x ${request.height}cm (Aspect Ratio: ${targetRatio})
-    - Main Headline: "${request.mainHeadline}" (Must be large, impactful, and properly integrated)
-    - Supporting Info: "${request.secondaryText}"
-    - Visual Style: ${request.visualStyle}
-    - Layout Strategy: ${request.layoutRequirements}
-    
-    REFERENCE INHERITANCE:
-    ${refInstructions}
-    
-    COLOR STRATEGY:
-    ${colorInstr}
-
-    STRICT ASSET RULES:
-    1. BRAND LOGO (CRITICAL): If provided, the Brand Logo image MUST be integrated into the final design exactly as it appears. Simply remove the background of the logo and place it according to the layout. DO NOT ALTER ITS DESIGN, FONT, OR CORE ELEMENTS.
-    2. PRODUCT ASSETS: Use provided visual content images as the main subject of the design.
-    
-    OUTPUT: Provide a JSON Design Plan, a 0-100 coordinate Layout Suggestion, and a MASTER PROMPT for generation.
+    ROLE: SENIOR ART DIRECTOR.
+    TASK: CREATE DESIGN BRIEF JSON.
+    SPECS: ${request.productType}, ${request.width}x${request.height}cm (${targetRatio}), Headline: "${request.mainHeadline}", Info: "${request.secondaryText}", Style: ${request.visualStyle}.
+    COLOR: ${colorInstr}
+    STRICT LOGO RULE: If provided, integrate the Brand Logo EXACTLY as is.
   ` }];
 
-  const logoData = extractBase64AndMime(request.logoImage);
-  if (logoData) {
-    promptParts.push({ inlineData: logoData });
+  if (request.logoImage) {
+    const logoData = extractBase64AndMime(request.logoImage);
+    if (logoData) promptParts.push({ inlineData: logoData });
   }
-  
-  request.assetImages.forEach(img => {
-    const assetData = extractBase64AndMime(img);
-    if (assetData) {
-      promptParts.push({ inlineData: assetData });
-    }
-  });
-
-  request.referenceImages.forEach(ref => {
-    const refData = extractBase64AndMime(ref.image);
-    if (refData) {
-      promptParts.push({ inlineData: refData });
-    }
-  });
 
   const response = await ai.models.generateContent({
     model: MODEL_PLANNING,
     contents: { parts: promptParts },
     config: {
-      systemInstruction: "You are a professional Art Director. Generate advertising design plans in JSON format using a 0-100 grid for elements.",
+      systemInstruction: "You are a professional Art Director. Output JSON format.",
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          designPlan: { 
-            type: Type.OBJECT, 
-            properties: { 
-              subject: {type: Type.STRING}, 
-              styleContext: {type: Type.STRING}, 
-              composition: {type: Type.STRING}, 
-              colorLighting: {type: Type.STRING}, 
-              decorElements: {type: Type.STRING}, 
-              typography: {type: Type.STRING} 
-            }, 
-            required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] 
-          },
-          layout_suggestion: { 
-            type: Type.OBJECT, 
-            properties: { 
-              canvas_ratio: {type: Type.STRING}, 
-              elements: { 
-                type: Type.ARRAY, 
-                items: { 
-                  type: Type.OBJECT, 
-                  properties: { 
-                    id: {type: Type.STRING}, 
-                    name: {type: Type.STRING}, 
-                    type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, 
-                    color: {type: Type.STRING}, 
-                    rect: { 
-                      type: Type.OBJECT, 
-                      properties: { 
-                        x: {type: Type.NUMBER}, 
-                        y: {type: Type.NUMBER}, 
-                        width: {type: Type.NUMBER}, 
-                        height: {type: Type.NUMBER} 
-                      }, 
-                      required: ["x", "y", "width", "height"] 
-                    } 
-                  }, 
-                  required: ["name", "type", "color", "rect"] 
-                } 
-              } 
-            },
-            required: ["canvas_ratio", "elements"]
-          },
+          designPlan: { type: Type.OBJECT, properties: { subject: {type: Type.STRING}, styleContext: {type: Type.STRING}, composition: {type: Type.STRING}, colorLighting: {type: Type.STRING}, decorElements: {type: Type.STRING}, typography: {type: Type.STRING} }, required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] },
+          layout_suggestion: { type: Type.OBJECT, properties: { canvas_ratio: {type: Type.STRING}, elements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
           analysis: { type: Type.STRING },
           final_prompt: { type: Type.STRING },
           recommendedAspectRatio: { type: Type.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
@@ -188,79 +94,53 @@ export const generateArtDirection = async (request: ArtDirectionRequest): Promis
 
   const result = JSON.parse(response.text) as ArtDirectionResponse;
   result.recommendedAspectRatio = targetRatio;
-  result.final_prompt = `${result.final_prompt}${convertLayoutToPrompt(result.layout_suggestion)}, ${QUALITY_BOOSTERS}`;
+  result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
   return result;
 };
 
-export const generateDesignImage = async (
-  prompt: string, 
-  aspectRatio: string, 
-  batchSize: number, 
-  imageSize: string,
-  _assets: string[] = [],
-  _logo: string | null = null,
-  mask?: string | null 
-): Promise<string[]> => {
+export const generateDesignImage = async (prompt: string, aspectRatio: string, batchSize: number, imageSize: string, _assets: string[] = [], _logo: string | null = null, mask?: string | null): Promise<string[]> => {
   const ai = getGeminiClient();
-  const cleanPrompt = prompt.replace(/[\n\r]/g, ' ').replace(/"/g, "'").trim();
-  const fullPrompt = `${cleanPrompt}. Professional commercial advertising design. Negative: ${NEGATIVE_PROMPT}`;
-  
+  const fullPrompt = `${prompt}. Professional advertising design. Negative: ${NEGATIVE_PROMPT}`;
   const baseParts: any[] = [{ text: fullPrompt }];
   
   const maskData = extractBase64AndMime(mask);
-  if (maskData) {
-    baseParts.push({ text: "Layout guide mask:" });
-    baseParts.push({ inlineData: maskData });
-  }
+  if (maskData) { baseParts.push({ text: "Layout guide mask:" }); baseParts.push({ inlineData: maskData }); }
 
   const logoData = extractBase64AndMime(_logo);
-  if (logoData) {
-    baseParts.push({ text: "Use this exact brand logo (preserve identity, remove background):" });
-    baseParts.push({ inlineData: logoData });
-  }
+  if (logoData) { baseParts.push({ text: "Use this exact brand logo (preserve identity):" }); baseParts.push({ inlineData: logoData }); }
 
   _assets.forEach((asset, idx) => {
     const assetData = extractBase64AndMime(asset);
-    if (assetData) {
-      baseParts.push({ text: `Subject product asset ${idx + 1}:` });
-      baseParts.push({ inlineData: assetData });
-    }
+    if (assetData) { baseParts.push({ text: `Subject product asset ${idx + 1}:` }); baseParts.push({ inlineData: assetData }); }
   });
 
   const promises = Array.from({ length: batchSize }).map(async () => {
     const result = await ai.models.generateContent({
       model: MODEL_PRODUCTION,
       contents: { parts: baseParts },
-      config: { 
-        imageConfig: { 
-          aspectRatio: aspectRatio as any, 
-          imageSize: imageSize as any 
-        } 
-      } 
+      config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: imageSize as any } } 
     });
-    
     const part = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
     return part?.inlineData?.data ? `data:image/png;base64,${part.inlineData.data}` : null;
   });
 
   const urls = (await Promise.all(promises)).filter((u): u is string => u !== null);
-  if (urls.length === 0) throw new Error("Hệ thống sản xuất hình ảnh đang bận hoặc gặp lỗi (400). Hãy thử lại.");
+  if (urls.length === 0) throw new Error("Production error (400). Please check your prompt and assets.");
   return urls;
 };
 
 export const upscaleImageTo4K = async (source: string, ar: string): Promise<string> => {
     const ai = getGeminiClient();
     const sourceData = extractBase64AndMime(source);
-    if (!sourceData) throw new Error("Invalid source image data.");
-
+    if (!sourceData) throw new Error("Invalid image data.");
     const response = await ai.models.generateContent({
         model: MODEL_PRODUCTION,
-        contents: { parts: [{ text: "Upscale and enhance this graphic design for 4K printing, keeping text sharp." }, { inlineData: sourceData }]},
+        contents: { parts: [{ text: "Upscale and enhance for 4K printing." }, { inlineData: sourceData }]},
         config: { imageConfig: { aspectRatio: ar as any, imageSize: "4K" } },
     });
     const data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
     if (data) return `data:image/png;base64,${data}`;
-    throw new Error("Nâng cấp 4K thất bại.");
+    throw new Error("Upscale failed.");
 };
 
 export const separateDesignComponents = async (_p: string, ar: string, sz: string, img: string): Promise<SeparatedAssets> => {
@@ -272,11 +152,11 @@ export const separateDesignComponents = async (_p: string, ar: string, sz: strin
   const tasks = [
     { 
       mode: 'bg', 
-      p: "Separate only the Background Layer. Include all environmental effects, atmosphere, lighting, and decorative background elements. Remove the main product subject and all text. Output a clean background asset." 
+      p: "TASK: SEPARATE THE BACKGROUND AND DECORATIONS. Include all environmental effects, atmosphere, particles, glows, and decorative background details. REMOVE ONLY text content, typography, and brand logos. The output should be the full visual scene without any words or branding." 
     },
     { 
       mode: 'txt', 
-      p: "Separate only the Object Layer. Include the Brand Logo, Main Headline text, and all supporting content. PLACE THESE ELEMENTS ON A SOLID PURE WHITE BACKGROUND. Remove the background imagery and environmental effects." 
+      p: "TASK: SEPARATE THE TEXT AND LOGO LAYER. Include the Brand Logo, Main Headline text, secondary copy, and all call-to-action elements. PLACE THESE ELEMENTS ON A SOLID, PURE WHITE BACKGROUND. Remove all background imagery and environmental effects." 
     }
   ];
 
@@ -302,58 +182,27 @@ export const removeObjectWithMask = async (source: string, mask: string, instr?:
     const sourceData = extractBase64AndMime(source);
     const maskData = extractBase64AndMime(mask);
     if (!sourceData || !maskData) return null;
-
     const response = await ai.models.generateContent({
         model: MODEL_PRODUCTION,
-        contents: { parts: [
-            { text: `Eraser tool: ${instr || 'Clean removal of the masked area. Reconstruct the background realistically.'}` },
-            { inlineData: sourceData },
-            { inlineData: maskData }
-        ]}
+        contents: { parts: [{ text: `Eraser tool task: ${instr || 'Clean removal and background reconstruction.'}` }, { inlineData: sourceData }, { inlineData: maskData }]}
     });
     const data = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
     return data ? `data:image/png;base64,${data}` : null;
-};
-
-export const refineDesignImage = async (source: string, instr: string, ar: string, q: QualityLevel): Promise<string[]> => {
-    const ai = getGeminiClient();
-    const sourceData = extractBase64AndMime(source);
-    if (!sourceData) return [];
-
-    const response = await ai.models.generateContent({
-        model: MODEL_PRODUCTION,
-        contents: { parts: [{ text: `Modify design: ${instr}` }, { inlineData: sourceData }]},
-        config: { imageConfig: { aspectRatio: ar as any, imageSize: q as any } },
-    });
-    return (response.candidates?.[0]?.content?.parts || []).filter(p => p.inlineData).map(p => `data:image/png;base64,${p.inlineData!.data}`);
 };
 
 export const regeneratePromptFromPlan = async (plan: DesignPlan, req: ArtDirectionRequest, ar: string, lay: any): Promise<ArtDirectionResponse> => {
     const ai = getGeminiClient();
     const response = await ai.models.generateContent({
         model: MODEL_PLANNING,
-        contents: { parts: [{ text: `Generate optimized design prompt for this plan: ${JSON.stringify(plan)}` }] },
+        contents: { parts: [{ text: `Optimize design prompt for: ${JSON.stringify(plan)}` }] },
         config: {
-            systemInstruction: "Expert Art Director. Output finalized design brief JSON.",
+            systemInstruction: "Expert Art Director. Output JSON.",
             responseMimeType: "application/json",
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
                     designPlan: { type: Type.OBJECT, properties: { subject: {type: Type.STRING}, styleContext: {type: Type.STRING}, composition: {type: Type.STRING}, colorLighting: {type: Type.STRING}, decorElements: {type: Type.STRING}, typography: {type: Type.STRING} }, required: ["subject", "styleContext", "composition", "colorLighting", "decorElements", "typography"] },
-                    layout_suggestion: { 
-                      type: Type.OBJECT, 
-                      properties: { 
-                        canvas_ratio: {type: Type.STRING}, 
-                        elements: { 
-                          type: Type.ARRAY, 
-                          items: { 
-                            type: Type.OBJECT, 
-                            properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, 
-                            required: ["name", "type", "color", "rect"] 
-                          } 
-                        } 
-                    }, 
-                    required: ["canvas_ratio", "elements"] },
+                    layout_suggestion: { type: Type.OBJECT, properties: { canvas_ratio: {type: Type.STRING}, elements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: {type: Type.STRING}, name: {type: Type.STRING}, type: {type: Type.STRING, enum: ["subject", "text", "decor", "logo"]}, color: {type: Type.STRING}, rect: { type: Type.OBJECT, properties: { x: {type: Type.NUMBER}, y: {type: Type.NUMBER}, width: {type: Type.NUMBER}, height: {type: Type.NUMBER} }, required: ["x", "y", "width", "height"] } }, required: ["name", "type", "color", "rect"] } } }, required: ["canvas_ratio", "elements"] },
                     analysis: { type: Type.STRING },
                     final_prompt: { type: Type.STRING },
                     recommendedAspectRatio: { type: Type.STRING, enum: ["1:1", "3:4", "4:3", "9:16", "16:9"] },
@@ -364,7 +213,7 @@ export const regeneratePromptFromPlan = async (plan: DesignPlan, req: ArtDirecti
     });
     const result = JSON.parse(response.text) as ArtDirectionResponse;
     result.recommendedAspectRatio = ar as any;
-    result.final_prompt = `${result.final_prompt}${convertLayoutToPrompt(lay || result.layout_suggestion)}, ${QUALITY_BOOSTERS}`;
+    result.final_prompt = `${result.final_prompt}, ${QUALITY_BOOSTERS}`;
     return result;
 };
 
