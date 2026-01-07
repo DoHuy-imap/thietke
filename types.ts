@@ -17,13 +17,13 @@ export enum VisualStyle {
   CORPORATE = 'Corporate',
   CYBERPUNK = 'Cyberpunk',
   NATURAL_ORGANIC = 'Natural/Organic',
-  FOLLOW_REF = 'Follow Reference'
+  FOLLOW_REF = 'Follow Reference' // New option
 }
 
 export enum ColorMode {
   AUTO = 'Auto',
   CUSTOM = 'Custom',
-  BRAND_LOGO = 'Brand Logo'
+  BRAND_LOGO = 'Brand Logo' // New option
 }
 
 export enum QualityLevel {
@@ -33,89 +33,94 @@ export enum QualityLevel {
 }
 
 export enum ProductImageMode {
-  REALISTIC = 'Realistic',
-  STYLIZED = 'Stylized'
+  REALISTIC = 'Realistic', // Làm nét, giữ nguyên chi tiết, tách nền
+  STYLIZED = 'Stylized'    // AI Cách điệu, vẽ lại
 }
 
+// New Enum for Analysis Model Selection
 export enum AnalysisModel {
-  FLASH = 'Flash',
-  PRO = 'Pro'
+  FLASH = 'Flash', // Uses gemini-1.5-flash
+  PRO = 'Pro'      // Uses gemini-1.5-pro
 }
 
 export interface ReferenceImageConfig {
   id: string;
-  image: string;
-  attributes: string[];
+  image: string; // Base64 string
+  attributes: string[]; // 'Subject', 'Style', 'Composition', 'Color', 'Decor', 'Typography'
 }
-
-// --- COST CALCULATION TYPES ---
-export interface CostBreakdown {
-  analysisInputTokens: number;
-  analysisOutputTokens: number;
-  analysisCostVND: number;
-  generationImageCount: number;
-  generationCostVND: number;
-  totalCostVND: number;
-}
-// ------------------------------
 
 export interface ArtDirectionRequest {
   productType: ProductType;
+  // Content Text Split
   mainHeadline: string;
-  mainHeadlineImage: string | null;
+  mainHeadlineImage: string | null; // Image reference specifically for the headline style
   secondaryText: string;
+  
   visualStyle: VisualStyle;
   colorMode: ColorMode;
   customColors: string[];
-  layoutRequirements: string;
-  fontPreferences: string;
+  
+  // Design Requirements
+  layoutRequirements: string; // Specific placement instructions & Scene description merged
+  fontPreferences: string; // New field for typography/font usage
+  
   width: string;
   height: string;
-  logoImage: string | null;
-  assetImages: string[];
-  productImageMode: ProductImageMode;
+  
+  // Assets & Logo
+  logoImage: string | null; // Base64 string for Brand Logo
+  assetImages: string[]; // Base64 strings
+  productImageMode: ProductImageMode; // How to treat the asset images
+
+  // Updated to support multiple references
   referenceImages: ReferenceImageConfig[]; 
+  
   batchSize: 1 | 2 | 3;
   quality: QualityLevel;
+  
+  // New field for Model Selection
   analysisModel: AnalysisModel;
 }
 
+// New Interface for Decomposed Plan
 export interface DesignPlan {
-  subject: string;
-  styleContext: string;
-  composition: string;
-  colorLighting: string;
-  decorElements: string;
-  typography: string;
+  subject: string;        // Chủ thể chính & Nội dung phụ
+  styleContext: string;   // Bối cảnh & Phong cách
+  composition: string;    // Bố cục & Góc máy
+  colorLighting: string;  // Màu sắc & Ánh sáng
+  decorElements: string;  // Chi tiết trang trí
+  typography: string;     // Typography (Chữ)
 }
 
+// --- NEW LAYOUT TYPES ---
 export interface LayoutRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  x: number; // Percentage 0-100
+  y: number; // Percentage 0-100
+  width: number; // Percentage 0-100
+  height: number; // Percentage 0-100
 }
 
 export interface LayoutElement {
   id: string;
   name: string;
   type: 'subject' | 'text' | 'decor' | 'logo';
-  color: string;
+  color: string; // Hex for UI display
   rect: LayoutRect;
   zIndex?: number;
-  image?: string;
-  imageRatio?: number;
+  image?: string; // Optional: Image content for visual preview
+  imageRatio?: number; // Optional: Width/Height ratio of the contained image
 }
 
 export interface LayoutSuggestion {
-  canvas_ratio: string;
+  canvas_ratio: string; // e.g., "9:16"
   elements: LayoutElement[];
 }
+// ------------------------
 
 export interface ArtDirectionResponse {
-  designPlan: DesignPlan;
-  layout_suggestion: LayoutSuggestion;
-  analysis: string;
+  designPlan: DesignPlan; // Structured plan
+  layout_suggestion: LayoutSuggestion; // NEW FIELD
+  analysis: string;       // General summary
   final_prompt: string;
   recommendedAspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 }
@@ -129,26 +134,37 @@ export interface ImageGenerationResult {
 export interface SeparatedAssets {
   background: string | null;
   textLayer: string | null;
-  subjects: string[];
-  decor: string[];
-  lighting: string | null;
+  subjects: string[]; // Multiple subject layers
+  decor: string[];    // Multiple decor layers
+  lighting: string | null; // Lighting/Atmosphere layer
   loading: boolean;
   error: string | null;
 }
 
+// --- HISTORY DB TYPES ---
 export interface DesignDNA {
-  id?: number;
-  createdAt: number;
-  author?: string;
-  thumbnail: string;
+  id?: number; // Auto-incremented by IndexedDB
+  createdAt: number; // Timestamp
+  author?: string; // NEW: The user who created this design
+  
+  // Core Visuals
+  thumbnail: string; // Base64 of the generated image (for gallery view)
+  
+  // Reconstruction Data
   finalPrompt: string;
   designPlan: DesignPlan;
   layout: LayoutSuggestion;
+  
+  // Request Context (To refill form)
   requestData: ArtDirectionRequest;
+  
+  // Saved Assets (To work offline/reload)
+  // We store Base64 strings here to keep it simple, though Blobs are more efficient
   assets: {
     type: 'user_asset' | 'logo' | 'reference' | 'headline_ref';
     data: string; 
   }[];
-  seed?: number;
+
+  seed?: number; // Optional if we support seeding later
   recommendedAspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 }
