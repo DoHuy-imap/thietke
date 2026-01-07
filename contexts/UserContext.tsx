@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 
 interface UserSettings {
@@ -10,14 +11,12 @@ interface AuthContextType {
   logout: () => void;
   deleteAccountData: () => Promise<void>;
   checkApiKeyStatus: () => Promise<boolean>;
-  saveApiKey: (key: string) => void; 
   isAiStudioEnvironment: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'map_app_user_v3';
-const API_KEY_STORAGE = 'gemini_api_key';
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 phút
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -64,7 +63,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // 3. Clear Storage (Wrap in try-catch for safety)
     try {
         localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(API_KEY_STORAGE);
     } catch (e) {
         console.error("Error clearing storage:", e);
     }
@@ -123,25 +121,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const checkApiKeyStatus = async () => {
     try {
+      // Mandatory check for Platform API key selection for Gemini 3 series
       if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
         return await (window as any).aistudio.hasSelectedApiKey();
       }
       
+      // Fallback to direct process.env check
       if (process.env.API_KEY && process.env.API_KEY.length > 0) return true;
-      
-      const localKey = localStorage.getItem(API_KEY_STORAGE);
-      if (localKey && localKey.length > 10) return true;
 
       return false;
     } catch (e) {
       console.warn("Lỗi khi kiểm tra API Key status:", e);
       return false;
     }
-  };
-
-  const saveApiKey = (key: string) => {
-      if (!key) return;
-      localStorage.setItem(API_KEY_STORAGE, key.trim());
   };
 
   return (
@@ -151,7 +143,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout, 
       deleteAccountData,
       checkApiKeyStatus,
-      saveApiKey,
       isAiStudioEnvironment
     }}>
       {children}

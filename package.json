@@ -1,7 +1,7 @@
 {
   "name": "map-design-studio",
   "version": "1.0.1",
-  "description": "AI Art Director Studio - Update Fix Build",
+  "description": "Fix Build Vercel",
   "main": "index.tsx",
   "dependencies": {
     "react": "^19.0.0",

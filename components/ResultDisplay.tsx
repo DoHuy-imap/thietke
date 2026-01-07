@@ -71,6 +71,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   const [isUpscaling, setIsUpscaling] = useState(false);
   const [layoutMask, setLayoutMask] = useState<string | null>(null);
   const [isUpscalingLayer, setIsUpscalingLayer] = useState<string | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   const criteriaList: { key: keyof DesignPlan; label: string }[] = [
       { key: 'subject', label: 'Chủ thể & Nội dung' },
@@ -96,6 +97,24 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
     onResetRefinement();
   }, [imageResult.imageUrls, onResetRefinement]);
 
+  // Giả lập thanh tiến trình khi đang vẽ ảnh (thường Nano Banana Pro mất 10-20s)
+  useEffect(() => {
+    let interval: any;
+    if (imageResult.loading) {
+      setLoadingProgress(0);
+      interval = setInterval(() => {
+        setLoadingProgress(prev => {
+          if (prev < 90) return prev + Math.random() * 5;
+          return prev;
+        });
+      }, 800);
+    } else {
+      setLoadingProgress(0);
+      if (interval) clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [imageResult.loading]);
+
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
@@ -104,6 +123,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   };
   
   const handleGenerateClick = (append: boolean) => {
+      if (imageResult.loading) return;
       onGenerateImages(editablePrompt, append, layoutMask);
   };
 
@@ -119,7 +139,6 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
   const handleStartSeparation = () => {
       if (!selectedImage) return;
-      // This will trigger separation in App.tsx which updates externalAssets
       onSeparateLayout(selectedImage, 'full');
   };
 
@@ -154,7 +173,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full gap-8 overflow-y-auto pr-3 relative scrollbar-hide">
+    <div className="flex flex-col h-full gap-8 overflow-y-auto pr-3 relative scrollbar-hide pb-20">
       {lightboxImage && (
         <div className="fixed inset-0 z-[100] bg-black/98 flex flex-col items-center justify-center p-6 backdrop-blur-3xl" onClick={() => setLightboxImage(null)}>
             <img src={lightboxImage} alt="Full" className="max-h-[88vh] max-w-full rounded-3xl shadow-2xl border border-white/10" />
@@ -177,8 +196,15 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
         <div className="bg-slate-900/80 rounded-[3.5rem] border border-white/5 overflow-hidden shadow-2xl backdrop-blur-3xl flex-shrink-0 animate-fade-in-down">
            <div className="p-10 pb-6 border-b border-white/5 bg-slate-950/50">
               <div className="flex justify-between items-start mb-8">
-                 <div><h3 className="text-white font-black text-2xl uppercase tracking-tighter">Moodboard Summary</h3><p className="text-[10px] text-[#FFD300] font-black uppercase tracking-widest mt-1.5 opacity-80">Phân tích dữ liệu & Tham chiếu sáng tạo</p></div>
-                 <div className="flex items-center gap-4"><span className="text-[10px] text-white font-black uppercase bg-slate-800/80 px-5 py-2.5 rounded-2xl border border-white/10">{request.productType}</span><span className="text-[10px] text-emerald-400 font-black uppercase bg-emerald-500/10 px-5 py-2.5 rounded-2xl border border-emerald-500/20">Tỷ lệ: {artDirection.recommendedAspectRatio}</span></div>
+                 <div>
+                    <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Moodboard Summary</h3>
+                    <p className="text-[10px] text-[#FFD300] font-black uppercase tracking-widest mt-1.5 opacity-80">
+                      Kích thước: {request.width} x {request.height} cm ● {artDirection.recommendedAspectRatio}
+                    </p>
+                 </div>
+                 <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-white font-black uppercase bg-slate-800/80 px-5 py-2.5 rounded-2xl border border-white/10">{request.productType}</span>
+                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
@@ -223,45 +249,100 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
              <div className="flex gap-6">
                  <button onClick={() => localPlan && onUpdatePlan(localPlan)} disabled={isUpdatingPlan} className="flex-1 py-7 bg-slate-800/80 hover:bg-slate-700 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 border border-white/5 shadow-xl">Cập nhật Kế hoạch</button>
-                 <button onClick={() => handleGenerateClick(false)} disabled={imageResult.loading} className="flex-[2] py-7 bg-[#FFD300] hover:bg-[#FFC000] text-black font-black rounded-3xl shadow-2xl transition-all uppercase tracking-widest text-[11px] border-t-2 border-white/20 disabled:opacity-50 disabled:cursor-wait">
-                    {imageResult.loading ? 'Đang thực hiện...' : 'Sản Xuất Hình Ảnh'}
+                 <button 
+                    onClick={() => handleGenerateClick(false)} 
+                    disabled={imageResult.loading} 
+                    className={`flex-[2] py-7 font-black rounded-3xl shadow-2xl transition-all uppercase tracking-widest text-[11px] border-t-2 border-white/20 flex items-center justify-center gap-3
+                        ${imageResult.loading ? 'bg-slate-800 text-slate-500 cursor-wait' : 'bg-[#FFD300] hover:bg-[#FFC000] text-black'}`}
+                 >
+                    {imageResult.loading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
+                          Đang Khởi Tạo...
+                        </>
+                    ) : 'Sản Xuất Hình Ảnh'}
                  </button>
              </div>
            </div>
         </div>
       )}
 
-      {/* Loading Overlay or Results */}
+      {/* Nano Banana Pro Production Interface */}
       {(imageResult.imageUrls.length > 0 || imageResult.loading) && (
-          <div className="flex-grow flex flex-col gap-10 pb-32">
+          <div className="flex-grow flex flex-col gap-10 pb-32 mt-6">
             <div className="flex items-center justify-between px-6">
                 <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Studio Output</h3>
-                <button onClick={() => handleGenerateClick(true)} disabled={imageResult.loading} className="text-[10px] text-[#FFD300] hover:text-white border-2 border-[#FFD300]/20 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all disabled:opacity-50">Thêm biến thể</button>
+                <button 
+                    onClick={() => handleGenerateClick(true)} 
+                    disabled={imageResult.loading} 
+                    className={`text-[10px] border-2 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all
+                        ${imageResult.loading ? 'border-slate-700 text-slate-600' : 'text-[#FFD300] border-[#FFD300]/20 hover:text-white hover:border-[#FFD300]'}`}
+                >
+                    {imageResult.loading ? 'Đang thực hiện...' : 'Thêm biến thể'}
+                </button>
             </div>
             
-            {/* Explicit Loading State */}
             {imageResult.loading && (
-                <div className="w-full h-80 bg-slate-900/50 rounded-[3.5rem] border border-white/5 flex flex-col items-center justify-center animate-pulse gap-6 mx-4">
-                     <div className="relative">
-                        <div className="w-20 h-20 border-4 border-[#FFD300]/30 rounded-full animate-spin"></div>
-                        <div className="absolute top-0 left-0 w-20 h-20 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin" style={{ animationDuration: '1s' }}></div>
-                     </div>
-                     <div className="text-center">
-                         <h4 className="text-white font-black uppercase tracking-widest text-sm mb-1">AI Đang Vẽ...</h4>
-                         <p className="text-[10px] text-slate-500 uppercase tracking-widest">Đang kết xuất chi tiết & ánh sáng</p>
+                <div className="w-full min-h-[450px] bg-slate-950/80 rounded-[4rem] border border-white/10 flex flex-col items-center justify-center gap-10 relative overflow-hidden backdrop-blur-3xl shadow-[0_0_100px_rgba(0,0,0,0.5)]">
+                     <div className="absolute inset-0 bg-gradient-to-br from-[#FFD300]/5 to-blue-500/10 opacity-40"></div>
+                     <div className="relative z-10 flex flex-col items-center w-full max-w-md px-10">
+                        <div className="relative mb-8">
+                            <div className="w-28 h-28 border-4 border-[#FFD300]/10 rounded-full"></div>
+                            <div className="absolute top-0 left-0 w-28 h-28 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin" style={{ animationDuration: '0.8s' }}></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <svg viewBox="0 0 24 24" className="w-12 h-12 text-[#FFD300] animate-pulse" fill="none" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                        </div>
+                        
+                        <div className="text-center mb-6">
+                           <h4 className="text-white font-black uppercase tracking-[0.5em] text-lg mb-2">Nano Banana Pro</h4>
+                           <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">Thiết kế Full Frame • {artDirection?.recommendedAspectRatio || "1:1"}</p>
+                        </div>
+
+                        {/* Thanh tiến trình giả lập */}
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-white/5 mb-4">
+                           <div 
+                             className="h-full bg-gradient-to-r from-[#FFD300] to-[#FFA000] transition-all duration-700 ease-out shadow-[0_0_15px_rgba(255,211,0,0.5)]" 
+                             style={{ width: `${loadingProgress}%` }}
+                           ></div>
+                        </div>
+                        
+                        <div className="flex justify-between w-full text-[9px] font-black uppercase tracking-widest text-slate-600 italic">
+                            <span>Initializing Render</span>
+                            <span>{Math.round(loadingProgress)}%</span>
+                        </div>
+
+                        <div className="mt-10 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm animate-pulse">
+                           <p className="text-[9px] text-[#FFD300] font-black uppercase tracking-widest text-center">Đang xử lý thiết kế toàn diện... Vui lòng không đóng Studio</p>
+                        </div>
                      </div>
                 </div>
             )}
 
-            {!imageResult.loading && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4">
+            {imageResult.error && (
+                <div className="bg-red-500/10 border border-red-500/30 p-10 rounded-[3rem] mx-4 text-center animate-shake">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h4 className="text-white font-black uppercase tracking-widest mb-2">Lỗi Sản Xuất Ảnh</h4>
+                    <p className="text-red-400 font-bold text-xs mb-6 max-w-md mx-auto line-clamp-2">"{imageResult.error}"</p>
+                    <button onClick={() => handleGenerateClick(false)} className="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">Thử lại phiên làm việc</button>
+                </div>
+            )}
+
+            {imageResult.imageUrls.length > 0 && !imageResult.loading && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4 animate-fade-in-up">
                     {imageResult.imageUrls.map((url, idx) => (<div key={idx} className={`group relative rounded-[3.5rem] overflow-hidden border-2 transition-all duration-700 cursor-pointer bg-slate-900 shadow-2xl ${selectedImage === url ? 'border-[#FFD300] ring-[12px] ring-[#FFD300]/5 scale-[0.98]' : 'border-white/5 hover:border-white/20'}`} onClick={() => setSelectedImage(selectedImage === url ? null : url)}><div className="w-full aspect-square relative overflow-hidden"><img src={url} alt="Result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[3px]"><button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-6 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-3xl border border-white/20 shadow-2xl transition-all active:scale-75">🔍</button></div></div></div>))}
                 </div>
             )}
           </div>
       )}
 
-      {/* Layer Separation Results - Persistent until new design */}
+      {/* Layer Separation Results */}
       {(externalAssets.background || externalAssets.textLayer || (externalAssets.decor && externalAssets.decor.length > 0) || externalAssets.loading) && (
           <div className="bg-slate-900/90 rounded-[3rem] p-10 border border-[#FFD300]/20 backdrop-blur-3xl animate-fade-in-up mt-8 shadow-2xl mb-40 relative overflow-hidden">
              {externalAssets.loading && <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center backdrop-blur-sm"><div className="w-16 h-16 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin"></div></div>}

@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/UserContext';
-import { validateApiKey } from '../services/geminiService';
 
 const MapLogo = ({ className }: { className?: string }) => (
   <div className={`relative ${className}`}>
@@ -18,9 +17,8 @@ const MapLogo = ({ className }: { className?: string }) => (
 );
 
 const LoginScreen: React.FC = () => {
-  const { login, checkApiKeyStatus, saveApiKey } = useAuth();
+  const { login, checkApiKeyStatus } = useAuth();
   const [name, setName] = useState('');
-  const [manualKey, setManualKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [isApiKeyFound, setIsApiKeyFound] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -35,6 +33,7 @@ const LoginScreen: React.FC = () => {
     checkKey();
   }, [checkApiKeyStatus]);
 
+  // FIX: Replace manual API key entry with platform openSelectKey() dialog
   const handleStart = async () => {
     if (!name.trim()) {
       setError("Vui lòng nhập tên nhà thiết kế.");
@@ -45,41 +44,21 @@ const LoginScreen: React.FC = () => {
     setError(null);
 
     try {
-      // Trường hợp 1: Đã tìm thấy Key trong hệ thống (Env hoặc LocalStorage cũ)
-      if (isApiKeyFound && !manualKey) {
-         // Lấy key từ storage hoặc env để validate (lưu ý: ở đây chúng ta giả định geminiService sẽ tự lấy key đúng như logic đã refactor)
-         // Nếu key nằm trong env, ta không thể lấy string ra để pass vào validateApiKey được nếu chạy ở client side thuần tuý mà không lộ key.
-         // TUY NHIÊN, hàm validateApiKey bên geminiService nhận 'key' string.
-         // Giải pháp: Gọi thử một hàm giả định hoặc nếu là env thì tin tưởng. 
-         // Nhưng tốt nhất là nếu có local key thì validate local key.
-         
-         const localKey = localStorage.getItem('gemini_api_key');
-         if (localKey) {
-             const isValid = await validateApiKey(localKey);
-             if (!isValid) {
-                 throw new Error("API Key đã lưu không hợp lệ. Vui lòng nhập Key mới.");
-             }
-         }
-         // Nếu là Env key (ẩn), ta tạm tin tưởng hoặc user phải tự đảm bảo.
-      } 
-      // Trường hợp 2: Người dùng nhập Key mới
-      else if (manualKey) {
-          const isValid = await validateApiKey(manualKey);
-          if (!isValid) {
-              throw new Error("API Key không hoạt động. Vui lòng kiểm tra lại (đảm bảo key còn quota và đúng format).");
-          }
-          saveApiKey(manualKey);
-      } 
-      // Trường hợp 3: Không có key nào
-      else {
-          throw new Error("Vui lòng nhập Gemini API Key để tiếp tục.");
+      const keyActive = await checkApiKeyStatus();
+      if (!keyActive) {
+        // Guideline: Trigger mandatory API Key selection for high-quality image generation
+        if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
+          await (window as any).aistudio.openSelectKey();
+          // Guideline: Assume selection was successful to mitigate race condition
+          login(name.trim());
+        } else {
+          throw new Error("Vui lòng truy cập ứng dụng qua AI Studio để sử dụng tính năng thiết kế.");
+        }
+      } else {
+        login(name.trim());
       }
-
-      // Login thành công
-      login(name.trim());
     } catch (e: any) {
       setError(e.message || "Kết nối thất bại. Vui lòng kiểm tra API Key.");
-      setIsApiKeyFound(false); // Reset để hiện ô nhập key nếu key cũ sai
     } finally {
       setIsValidating(false);
     }
@@ -127,36 +106,43 @@ const LoginScreen: React.FC = () => {
 
           {!isApiKeyFound && (
               <div className="text-left space-y-2 animate-fade-in">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Gemini API Key</label>
-                <div className="relative">
-                    <input 
-                    type="password" 
-                    placeholder="Dán API Key vào đây..."
-                    value={manualKey}
-                    onChange={(e) => {
-                        setManualKey(e.target.value);
-                        if (error) setError(null);
-                    }}
-                    className="w-full bg-slate-950 border border-white/5 rounded-3xl px-6 py-4 text-white font-mono text-sm focus:ring-2 focus:ring-blue-500/40 outline-none transition-all placeholder-slate-700"
-                    />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-                    </div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Cấu hình Gemini API</label>
+                <div className="p-6 bg-blue-900/10 rounded-3xl border border-blue-500/20 text-center">
+                   <p className="text-[10px] text-slate-400 leading-relaxed mb-4">
+                     Mẫu thiết kế này sử dụng Gemini 3 Pro để đảm bảo chất lượng in ấn 4K. 
+                     Vui lòng chọn API Key từ một <strong>GCP Project đã kích hoạt thanh toán (Paid)</strong>.
+                   </p>
+                   <a 
+                     href="https://ai.google.dev/gemini-api/docs/billing" 
+                     target="_blank" 
+                     rel="noreferrer" 
+                     className="text-[9px] text-blue-400 underline hover:text-blue-300 block mb-2"
+                   >
+                     Tìm hiểu về Billing & Quota
+                   </a>
                 </div>
-                <p className="text-[9px] text-slate-500 ml-4">* Key được lưu an toàn trong trình duyệt của bạn.</p>
               </div>
           )}
 
-          {isApiKeyFound && !manualKey && (
+          {isApiKeyFound && (
               <div className="p-4 bg-emerald-900/20 rounded-2xl border border-emerald-500/20 flex items-center gap-3">
                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                  </div>
                  <div className="text-left">
                     <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Hệ thống đã sẵn sàng</p>
-                    <p className="text-[10px] text-slate-400">API Key đã được cấu hình tự động.</p>
+                    <p className="text-[10px] text-slate-400">API Key đã được cấu hình.</p>
                  </div>
-                 <button onClick={() => setIsApiKeyFound(false)} className="ml-auto text-[9px] text-slate-500 hover:text-white underline">Thay đổi</button>
+                 <button 
+                  onClick={async () => {
+                    if ((window as any).aistudio?.openSelectKey) {
+                      await (window as any).aistudio.openSelectKey();
+                    }
+                  }} 
+                  className="ml-auto text-[9px] text-slate-500 hover:text-white underline"
+                >
+                  Thay đổi
+                </button>
               </div>
           )}
 
@@ -176,7 +162,7 @@ const LoginScreen: React.FC = () => {
                 </>
             ) : (
                 <>
-                    Kết nối Studio
+                    {isApiKeyFound ? 'Kết nối Studio' : 'Chọn Key & Bắt đầu'}
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>

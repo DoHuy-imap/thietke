@@ -1,4 +1,5 @@
 
+
 export enum ProductType {
   POSTER = 'Poster',
   STANDEE = 'Standee',
@@ -37,10 +38,10 @@ export enum ProductImageMode {
   STYLIZED = 'Stylized'    // AI Cách điệu, vẽ lại
 }
 
-// New Enum for Analysis Model Selection
+// Updated comments to reflect correct Gemini 3 models
 export enum AnalysisModel {
-  FLASH = 'Flash', // Uses gemini-1.5-flash
-  PRO = 'Pro'      // Uses gemini-1.5-pro
+  FLASH = 'Flash', // Uses gemini-3-flash-preview
+  PRO = 'Pro'      // Uses gemini-3-pro-preview
 }
 
 export interface ReferenceImageConfig {
@@ -167,4 +168,14 @@ export interface DesignDNA {
 
   seed?: number; // Optional if we support seeding later
   recommendedAspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+}
+
+// Fix: Added missing CostBreakdown interface
+export interface CostBreakdown {
+  analysisInputTokens: number;
+  analysisOutputTokens: number;
+  analysisCostVND: number;
+  generationImageCount: number;
+  generationCostVND: number;
+  totalCostVND: number;
 }

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import InputForm from './components/InputForm';
 import ResultDisplay from './components/ResultDisplay';
@@ -70,9 +71,10 @@ const App: React.FC = () => {
   const [estimatedCost, setEstimatedCost] = useState(0);
 
   // Update estimated cost whenever request changes
+  // FIX: Accessing totalCostVND property from CostBreakdown object to satisfy SetStateAction<number>
   useEffect(() => {
     const cost = estimateRequestCost(request);
-    setEstimatedCost(cost);
+    setEstimatedCost(cost.totalCostVND);
   }, [request]);
 
   const [artDirection, setArtDirection] = useState<ArtDirectionResponse | null>(null);
