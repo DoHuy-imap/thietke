@@ -58,8 +58,12 @@ const resizeImageBase64 = (base64Str: string, maxWidth = 1536): Promise<string> 
 };
 
 const getGeminiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key chưa được cấu hình. Vui lòng chọn API Key tại màn hình đăng nhập.");
+  // Ưu tiên key từ biến môi trường, sau đó đến localStorage (cho bản Vercel/Web)
+  const apiKey = process.env.API_KEY || localStorage.getItem('MAP_API_KEY');
+  
+  if (!apiKey || apiKey.length < 10) {
+    throw new Error("API Key chưa được cấu hình. Vui lòng nhập API Key tại màn hình đăng nhập.");
+  }
   return new GoogleGenAI({ apiKey });
 };
 

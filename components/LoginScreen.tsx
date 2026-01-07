@@ -17,11 +17,15 @@ const MapLogo = ({ className }: { className?: string }) => (
 );
 
 const LoginScreen: React.FC = () => {
-  const { login, checkApiKeyStatus } = useAuth();
+  const { login, checkApiKeyStatus, saveApiKey, isAiStudioEnvironment } = useAuth();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
   const [isApiKeyFound, setIsApiKeyFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // State cho manual API key input
+  const [manualKey, setManualKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -33,7 +37,7 @@ const LoginScreen: React.FC = () => {
   }, [checkApiKeyStatus]);
 
   const handleSelectKey = async () => {
-    if (typeof window !== 'undefined' && (window as any).aistudio?.openSelectKey) {
+    if (isAiStudioEnvironment && (window as any).aistudio?.openSelectKey) {
       await (window as any).aistudio.openSelectKey();
       setIsApiKeyFound(true);
     }
@@ -46,7 +50,15 @@ const LoginScreen: React.FC = () => {
     }
 
     if (!isApiKeyFound) {
-      setError("Vui lòng chọn API Key để tiếp tục.");
+      // Nếu là môi trường web thường và user đã nhập key
+      if (!isAiStudioEnvironment && manualKey.length > 20) {
+          saveApiKey(manualKey);
+          setIsApiKeyFound(true);
+          login(name.trim());
+          return;
+      }
+
+      setError("Vui lòng cấu hình API Key để tiếp tục.");
       return;
     }
 
@@ -94,38 +106,66 @@ const LoginScreen: React.FC = () => {
 
           <div className="text-left space-y-2">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Trạng thái API Key</label>
+            
             {isApiKeyFound ? (
               <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-3xl px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
                   <span className="text-emerald-500 text-xs font-bold">API Key đã sẵn sàng</span>
                 </div>
-                <button onClick={handleSelectKey} className="text-[9px] text-slate-400 hover:text-white underline uppercase font-black tracking-widest">Thay đổi</button>
+                {!isAiStudioEnvironment && (
+                    <button onClick={() => { localStorage.removeItem('MAP_API_KEY'); window.location.reload(); }} className="text-[9px] text-slate-400 hover:text-white underline uppercase font-black tracking-widest">Reset</button>
+                )}
               </div>
-            ) : (
+            ) : isAiStudioEnvironment ? (
+              // Giao diện chọn Key cho Project IDX / AI Studio
               <button 
                 onClick={handleSelectKey}
                 className="w-full bg-slate-950 border border-dashed border-slate-700 hover:border-[#FFD300] rounded-3xl px-6 py-4 text-slate-500 hover:text-[#FFD300] transition-all flex items-center justify-center gap-3"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 7a2 2 0 012 2m-2 4a2 2 0 012 2m-2-4a2 2 0 01-2-2m-2 4a2 2 0 01-2 2m5-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                <span className="text-xs font-bold">Nhấn để chọn API Key an toàn</span>
+                <span className="text-xs font-bold">Kết nối API Key (AI Studio)</span>
               </button>
+            ) : (
+              // Giao diện nhập Key thủ công cho Vercel / Web
+              <div className="relative group">
+                  <div className="relative">
+                      <input 
+                        type={showKey ? "text" : "password"} 
+                        placeholder="Dán Gemini API Key của bạn tại đây..."
+                        value={manualKey}
+                        onChange={(e) => setManualKey(e.target.value)}
+                        className="w-full bg-slate-950 border border-white/5 rounded-3xl px-6 py-4 text-white font-mono text-xs focus:ring-2 focus:ring-[#FFD300]/40 outline-none transition-all placeholder-slate-700 pr-12"
+                      />
+                      <button 
+                        onClick={() => setShowKey(!showKey)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white p-2"
+                      >
+                         {showKey ? (
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                         ) : (
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                         )}
+                      </button>
+                  </div>
+                  <div className="mt-2 flex justify-between items-center px-2">
+                      <p className="text-[9px] text-slate-600">Key được lưu an toàn trong trình duyệt của bạn.</p>
+                      <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[9px] text-[#FFD300] hover:underline font-bold uppercase">Lấy API Key ↗</a>
+                  </div>
+              </div>
             )}
-            <p className="text-[9px] text-slate-600 px-4 mt-1 leading-relaxed">
-              Dữ liệu API Key được quản lý trực tiếp bởi hệ thống, đảm bảo tuyệt mật.
-            </p>
           </div>
 
           <button 
             onClick={handleStart}
-            disabled={!name || !isApiKeyFound}
+            disabled={!name || (!isApiKeyFound && manualKey.length < 20)}
             className={`w-full py-5 font-black rounded-3xl shadow-xl uppercase tracking-[0.2em] transition-all text-sm group flex items-center justify-center gap-3
-                ${(!name || !isApiKeyFound) 
+                ${(!name || (!isApiKeyFound && manualKey.length < 20)) 
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
                     : 'bg-[#FFD300] hover:bg-[#FFC000] text-black shadow-[#FFD300]/20 active:scale-95'
                 }`}
           >
-            Kết nối Studio
+            {(!isAiStudioEnvironment && !isApiKeyFound) ? 'Lưu Key & Kết nối' : 'Kết nối Studio'}
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>

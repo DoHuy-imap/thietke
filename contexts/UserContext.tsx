@@ -11,12 +11,14 @@ interface AuthContextType {
   logout: () => void;
   deleteAccountData: () => Promise<void>;
   checkApiKeyStatus: () => Promise<boolean>;
+  saveApiKey: (key: string) => void;
   isAiStudioEnvironment: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'map_app_user_v3';
+const API_KEY_STORAGE = 'MAP_API_KEY';
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 phút
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -54,6 +56,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
     try {
         localStorage.removeItem(STORAGE_KEY);
+        // Tùy chọn: Xóa luôn API Key khi logout để bảo mật tuyệt đối
+        // localStorage.removeItem(API_KEY_STORAGE);
     } catch (e) {
         console.error("Error clearing storage:", e);
     }
@@ -61,6 +65,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         window.location.reload();
     }, 100);
   }, []);
+
+  const saveApiKey = (key: string) => {
+    if (key && key.trim().length > 0) {
+        localStorage.setItem(API_KEY_STORAGE, key.trim());
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -95,10 +105,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const checkApiKeyStatus = async () => {
     try {
-      // Chỉ kiểm tra qua aistudio hoặc biến môi trường process.env.API_KEY
+      // 1. Kiểm tra môi trường AI Studio
       if (typeof window !== 'undefined' && (window as any).aistudio?.hasSelectedApiKey) {
         return await (window as any).aistudio.hasSelectedApiKey();
       }
+      
+      // 2. Kiểm tra Local Storage (cho Vercel/Web)
+      const storedKey = localStorage.getItem(API_KEY_STORAGE);
+      if (storedKey && storedKey.length > 10) return true;
+
+      // 3. Kiểm tra biến môi trường
       return !!(process.env.API_KEY && process.env.API_KEY.length > 5);
     } catch (e) {
       return false;
@@ -112,6 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout, 
       deleteAccountData,
       checkApiKeyStatus,
+      saveApiKey,
       isAiStudioEnvironment
     }}>
       {children}
