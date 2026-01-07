@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { upscaleImageTo4K } from '../services/geminiService';
 
@@ -26,7 +27,7 @@ interface SmartRemoverProps {
   onProcess: (maskBase64: string, textDescription: string) => void;
   isProcessing: boolean;
   resultUrl?: string | null;
-  aspectRatio?: string; // New Prop for accurate 4K upscaling
+  aspectRatio?: string; 
 }
 
 interface DrawPath {
@@ -221,7 +222,7 @@ const SmartRemover: React.FC<SmartRemoverProps> = ({ imageUrl, onClose, onProces
                     <div className="absolute top-0 left-0 w-24 h-24 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
                  </div>
                  <p className="text-white font-black uppercase tracking-[0.3em] mt-8 animate-pulse text-sm">Đang tái cấu trúc bối cảnh...</p>
-                 <p className="text-[10px] text-slate-500 uppercase mt-2 font-bold tracking-widest">Vui lòng không đóng cửa sổ</p>
+                 <p className="text-[10px] text-slate-500 uppercase mt-2 font-bold tracking-widest">Hệ thống AI Eraser đang làm việc</p>
              </div>
          )}
       </div>

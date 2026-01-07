@@ -1,9 +1,10 @@
 
+// Fix: Added React to the import statement to resolve "Cannot find namespace 'React'" error.
 import React, { useState, useEffect } from 'react';
 import { ArtDirectionRequest, ArtDirectionResponse, ImageGenerationResult, SeparatedAssets, DesignPlan, LayoutSuggestion } from '../types';
 import LayoutEditor from './LayoutEditor';
 import SmartRemover from './SmartRemover';
-import { convertLayoutToPrompt, upscaleImageTo4K } from '../services/geminiService';
+import { convertLayoutToPrompt, upscaleImageTo4K, LAYOUT_TAG } from '../services/geminiService';
 
 const triggerDownload = (base64Data: string, fileName: string) => {
   try {
@@ -95,31 +96,35 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
     setSelectedImage(null);
     setShowSmartRemover(false);
     onResetRefinement();
-  }, [imageResult.imageUrls, onResetRefinement]);
+  }, [imageResult.images, onResetRefinement]);
 
-  // Giả lập thanh tiến trình khi đang vẽ ảnh (thường Nano Banana Pro mất 10-20s)
   useEffect(() => {
     let interval: any;
-    if (imageResult.loading) {
+    if (imageResult.loading || externalAssets.loading) {
       setLoadingProgress(0);
       interval = setInterval(() => {
         setLoadingProgress(prev => {
-          if (prev < 90) return prev + Math.random() * 5;
+          if (prev < 95) return prev + Math.random() * 4;
           return prev;
         });
-      }, 800);
+      }, 700);
     } else {
       setLoadingProgress(0);
       if (interval) clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [imageResult.loading]);
+  }, [imageResult.loading, externalAssets.loading]);
 
   const handleLayoutConfirm = (mask: string) => {
       if (!localLayout) return;
       setLayoutMask(mask);
       const layoutInstruction = convertLayoutToPrompt(localLayout);
-      setEditablePrompt(prev => prev.split('\n\n### SPATIAL LAYOUT ###')[0] + layoutInstruction);
+      setEditablePrompt(prev => {
+          if (prev.includes(LAYOUT_TAG)) {
+              return prev.split(LAYOUT_TAG)[0] + layoutInstruction;
+          }
+          return prev + layoutInstruction;
+      });
   };
   
   const handleGenerateClick = (append: boolean) => {
@@ -215,10 +220,9 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                           <h4 className="text-white font-black text-xl uppercase tracking-tight mb-2">{request.mainHeadline}</h4>
                           <p className="text-xs text-slate-400 font-bold italic line-clamp-2">"{request.secondaryText}"</p>
                        </div>
-                       {request.mainHeadlineImage && <div className="w-20 h-20 bg-slate-800 rounded-2xl overflow-hidden border border-white/10 shadow-lg"><img src={request.mainHeadlineImage} className="w-full h-full object-cover" alt="Typo" /></div>}
+                       {request.logoImage && <div className="w-20 h-20 bg-white rounded-2xl overflow-hidden border border-white/10 shadow-lg p-1.5"><img src={request.logoImage} className="w-full h-full object-contain" alt="Logo" /></div>}
                     </div>
                     <div className="flex flex-wrap gap-4">
-                       {request.logoImage && <div className="w-20 h-20 bg-white rounded-3xl overflow-hidden border-4 border-white/10 shadow-2xl p-1.5"><img src={request.logoImage} className="w-full h-full object-contain" alt="Logo" /></div>}
                        <div className="flex gap-2.5">
                            {request.assetImages.map((img, i) => (<div key={i} className="w-20 h-20 bg-slate-800 rounded-3xl overflow-hidden border-2 border-white/5 shadow-2xl group relative transition-transform hover:scale-105"><img src={img} className="w-full h-full object-cover" alt="Product" /></div>))}
                        </div>
@@ -240,7 +244,16 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                 ))}
              </div>
 
-             {localLayout && <LayoutEditor layout={localLayout} onLayoutChange={(updated) => setLocalLayout(updated)} onConfirm={handleLayoutConfirm} onUpdateDescription={() => {}} isUpdatingDescription={false} />}
+             {localLayout && (
+                <LayoutEditor 
+                    key={artDirection?.final_prompt}
+                    layout={localLayout} 
+                    onLayoutChange={(updated) => setLocalLayout(updated)} 
+                    onConfirm={handleLayoutConfirm} 
+                    onUpdateDescription={() => {}} 
+                    isUpdatingDescription={false} 
+                />
+             )}
 
              <div className="space-y-5">
                 <div className="flex justify-between items-center px-6"><h4 className="text-[10px] text-slate-500 font-black uppercase tracking-widest flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>AI Final Design Prompt</h4></div>
@@ -258,7 +271,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                     {imageResult.loading ? (
                         <>
                           <div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
-                          Đang Khởi Tạo...
+                          Đang Sản Xuất...
                         </>
                     ) : 'Sản Xuất Hình Ảnh'}
                  </button>
@@ -267,22 +280,21 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
         </div>
       )}
 
-      {/* Nano Banana Pro Production Interface */}
-      {(imageResult.imageUrls.length > 0 || imageResult.loading) && (
+      {(imageResult.images.length > 0 || imageResult.loading || externalAssets.loading) && (
           <div className="flex-grow flex flex-col gap-10 pb-32 mt-6">
             <div className="flex items-center justify-between px-6">
                 <h3 className="text-white font-black text-2xl uppercase tracking-tighter">Studio Output</h3>
                 <button 
                     onClick={() => handleGenerateClick(true)} 
-                    disabled={imageResult.loading} 
+                    disabled={imageResult.loading || externalAssets.loading} 
                     className={`text-[10px] border-2 px-8 py-3 rounded-2xl font-black uppercase tracking-widest transition-all
-                        ${imageResult.loading ? 'border-slate-700 text-slate-600' : 'text-[#FFD300] border-[#FFD300]/20 hover:text-white hover:border-[#FFD300]'}`}
+                        ${(imageResult.loading || externalAssets.loading) ? 'border-slate-700 text-slate-600' : 'text-[#FFD300] border-[#FFD300]/20 hover:text-white hover:border-[#FFD300]'}`}
                 >
-                    {imageResult.loading ? 'Đang thực hiện...' : 'Thêm biến thể'}
+                    {(imageResult.loading || externalAssets.loading) ? 'Đang thực hiện...' : 'Thêm biến thể'}
                 </button>
             </div>
             
-            {imageResult.loading && (
+            {(imageResult.loading || externalAssets.loading) && (
                 <div className="w-full min-h-[450px] bg-slate-950/80 rounded-[4rem] border border-white/10 flex flex-col items-center justify-center gap-10 relative overflow-hidden backdrop-blur-3xl shadow-[0_0_100px_rgba(0,0,0,0.5)]">
                      <div className="absolute inset-0 bg-gradient-to-br from-[#FFD300]/5 to-blue-500/10 opacity-40"></div>
                      <div className="relative z-10 flex flex-col items-center w-full max-w-md px-10">
@@ -297,11 +309,14 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                         </div>
                         
                         <div className="text-center mb-6">
-                           <h4 className="text-white font-black uppercase tracking-[0.5em] text-lg mb-2">Nano Banana Pro</h4>
-                           <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">Thiết kế Full Frame • {artDirection?.recommendedAspectRatio || "1:1"}</p>
+                           <h4 className="text-white font-black uppercase tracking-[0.5em] text-lg mb-2">
+                             {externalAssets.loading ? 'Layer Separation' : 'Production Engine'}
+                           </h4>
+                           <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
+                             {externalAssets.loading ? 'Đang tách phân rã lớp đồ họa...' : `Tác phẩm Full-Frame • ${artDirection?.recommendedAspectRatio || "1:1"}`}
+                           </p>
                         </div>
 
-                        {/* Thanh tiến trình giả lập */}
                         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-white/5 mb-4">
                            <div 
                              className="h-full bg-gradient-to-r from-[#FFD300] to-[#FFA000] transition-all duration-700 ease-out shadow-[0_0_15px_rgba(255,211,0,0.5)]" 
@@ -310,75 +325,40 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                         </div>
                         
                         <div className="flex justify-between w-full text-[9px] font-black uppercase tracking-widest text-slate-600 italic">
-                            <span>Initializing Render</span>
+                            <span>{externalAssets.loading ? 'Extracting visual components' : 'Initializing Print Engine'}</span>
                             <span>{Math.round(loadingProgress)}%</span>
                         </div>
 
                         <div className="mt-10 px-6 py-3 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm animate-pulse">
-                           <p className="text-[9px] text-[#FFD300] font-black uppercase tracking-widest text-center">Đang xử lý thiết kế toàn diện... Vui lòng không đóng Studio</p>
+                           <p className="text-[9px] text-[#FFD300] font-black uppercase tracking-widest text-center">
+                             {externalAssets.loading ? 'Director đang phân tích và trích xuất từng lớp thiết kế...' : 'AI đang xuất file đồ họa cao cấp cho in ấn...'}
+                           </p>
                         </div>
                      </div>
                 </div>
             )}
 
-            {imageResult.error && (
-                <div className="bg-red-500/10 border border-red-500/30 p-10 rounded-[3rem] mx-4 text-center animate-shake">
-                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <h4 className="text-white font-black uppercase tracking-widest mb-2">Lỗi Sản Xuất Ảnh</h4>
-                    <p className="text-red-400 font-bold text-xs mb-6 max-w-md mx-auto line-clamp-2">"{imageResult.error}"</p>
-                    <button onClick={() => handleGenerateClick(false)} className="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">Thử lại phiên làm việc</button>
-                </div>
-            )}
-
-            {imageResult.imageUrls.length > 0 && !imageResult.loading && (
+            {imageResult.images.length > 0 && !imageResult.loading && !externalAssets.loading && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 px-4 animate-fade-in-up">
-                    {imageResult.imageUrls.map((url, idx) => (<div key={idx} className={`group relative rounded-[3.5rem] overflow-hidden border-2 transition-all duration-700 cursor-pointer bg-slate-900 shadow-2xl ${selectedImage === url ? 'border-[#FFD300] ring-[12px] ring-[#FFD300]/5 scale-[0.98]' : 'border-white/5 hover:border-white/20'}`} onClick={() => setSelectedImage(selectedImage === url ? null : url)}><div className="w-full aspect-square relative overflow-hidden"><img src={url} alt="Result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[3px]"><button onClick={(e) => { e.stopPropagation(); setLightboxImage(url); }} className="p-6 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-3xl border border-white/20 shadow-2xl transition-all active:scale-75">🔍</button></div></div></div>))}
+                    {imageResult.images.map((img, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`group relative rounded-[3.5rem] overflow-hidden border-2 transition-all duration-700 cursor-pointer bg-slate-900 shadow-2xl ${selectedImage === img.url ? 'border-[#FFD300] ring-[12px] ring-[#FFD300]/5 scale-[0.98]' : 'border-white/5 hover:border-white/20'}`} 
+                        onClick={() => setSelectedImage(selectedImage === img.url ? null : img.url)}
+                      >
+                        {img.isNew && (
+                          <div className="absolute top-6 left-6 z-20 bg-[#FFD300] text-black text-[9px] font-black px-4 py-1.5 rounded-full shadow-lg shadow-[#FFD300]/30 animate-pulse">NEW</div>
+                        )}
+                        <div className="w-full aspect-square relative overflow-hidden">
+                          <img src={img.url} alt="Result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[3px]">
+                            <button onClick={(e) => { e.stopPropagation(); setLightboxImage(img.url); }} className="p-6 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-3xl border border-white/20 shadow-2xl transition-all active:scale-75">🔍</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                 </div>
             )}
-          </div>
-      )}
-
-      {/* Layer Separation Results */}
-      {(externalAssets.background || externalAssets.textLayer || (externalAssets.decor && externalAssets.decor.length > 0) || externalAssets.loading) && (
-          <div className="bg-slate-900/90 rounded-[3rem] p-10 border border-[#FFD300]/20 backdrop-blur-3xl animate-fade-in-up mt-8 shadow-2xl mb-40 relative overflow-hidden">
-             {externalAssets.loading && <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center backdrop-blur-sm"><div className="w-16 h-16 border-4 border-[#FFD300] border-t-transparent rounded-full animate-spin"></div></div>}
-             <div className="flex justify-between items-center mb-8"><h3 className="text-white font-black text-xl uppercase tracking-tighter">Hồ sơ Tách Lớp Chuyên Nghiệp</h3></div>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                 <div className="space-y-4">
-                    <span className="text-[9px] text-blue-400 font-black uppercase tracking-widest text-center block">Layer 1: Nền (Background)</span>
-                    <div className="aspect-square bg-black rounded-3xl overflow-hidden border border-white/5 relative group">{externalAssets.background ? <img src={externalAssets.background} className="w-full h-full object-cover" alt="BG" /> : <div className="w-full h-full flex items-center justify-center text-slate-700 text-xs font-bold uppercase">Trống</div>}
-                       {externalAssets.background && (
-                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-all">
-                                <button onClick={() => handleUpscaleLayer(externalAssets.background!, 'bg')} disabled={!!isUpscalingLayer} className="px-6 py-3 bg-white text-black text-[9px] font-black uppercase rounded-2xl hover:bg-gray-200 shadow-lg">{isUpscalingLayer === 'bg' ? 'Đang xử lý...' : 'Tải File In 4K'}</button>
-                           </div>
-                       )}
-                    </div>
-                 </div>
-                 <div className="space-y-4">
-                    <span className="text-[9px] text-emerald-400 font-black uppercase tracking-widest text-center block">Layer 2: Trang trí (Decor)</span>
-                    <div className="aspect-square bg-white/5 rounded-3xl overflow-hidden border border-white/5 relative group">{externalAssets.decor[0] ? <img src={externalAssets.decor[0]} className="w-full h-full object-cover" alt="Decor" /> : <div className="w-full h-full flex items-center justify-center text-slate-700 text-xs font-bold uppercase">Trống</div>}
-                       {externalAssets.decor[0] && (
-                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-all">
-                                <button onClick={() => handleUpscaleLayer(externalAssets.decor[0]!, 'decor')} disabled={!!isUpscalingLayer} className="px-6 py-3 bg-white text-black text-[9px] font-black uppercase rounded-2xl hover:bg-gray-200 shadow-lg">{isUpscalingLayer === 'decor' ? 'Đang xử lý...' : 'Tải File In 4K'}</button>
-                           </div>
-                       )}
-                    </div>
-                 </div>
-                 <div className="space-y-4">
-                    <span className="text-[9px] text-[#FFD300] font-black uppercase tracking-widest text-center block">Layer 3: Nội dung (Text & Logo)</span>
-                    <div className="aspect-square bg-white/5 rounded-3xl overflow-hidden border border-white/5 relative group">{externalAssets.textLayer ? <img src={externalAssets.textLayer} className="w-full h-full object-cover" alt="Text" /> : <div className="w-full h-full flex items-center justify-center text-slate-700 text-xs font-bold uppercase">Trống</div>}
-                       {externalAssets.textLayer && (
-                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-all">
-                                <button onClick={() => handleUpscaleLayer(externalAssets.textLayer!, 'text')} disabled={!!isUpscalingLayer} className="px-6 py-3 bg-white text-black text-[9px] font-black uppercase rounded-2xl hover:bg-gray-200 shadow-lg">{isUpscalingLayer === 'text' ? 'Đang xử lý...' : 'Tải File In 4K'}</button>
-                           </div>
-                       )}
-                    </div>
-                 </div>
-             </div>
           </div>
       )}
 
